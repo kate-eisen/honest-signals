@@ -1,0 +1,141 @@
+---
+title: "Analyses for honest signals MS"
+output: github_document
+---
+
+## Analyses
+
+Question 1: Is flower size variation consistent between the field and the greenhouse?
+
+*Approach*: Comparing population means between the field and the greenhouse. Are we trying to compare each individual population field to greenhouse (e.g. two sample t-tests), or a trend across the populations field vs. greenhouse (e.g. regression of population means between field and greenhouse)?
+
+Question 2: Are size and scent honest signals for nectar rewards?
+
+*Approach*: Correlation between size and rewards, and between scent and rewards. First do a regression of all plants, with plant nested within population as a random effect. Then do regressions for each population.
+
+Question 3: Are populations pollen limited? [Q3]
+
+*Approach*: Paired t-tests comparing controlled vs. open pollinated seed set in each population.
+
+  
+### Packages and start up code:
+
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(readxl)
+library(lme4)
+library(lmerTest)
+library(knitr)
+```
+
+
+### Q2: Are size and scent honest signals for nectar rewards?
+Loading in the data
+```{r, warning=FALSE, message=FALSE}
+nectar <- read_excel("nectar protocol.xlsx")
+```
+
+#### Summarizing and subsetting the dataset 
+
+*summarizing the NAs*
+
+```{r}
+kable(nectar %>% filter(is.na(Population)) %>% group_by(Plant_id) %>% summarise(N=length(unique(flower_id))))
+```
+
+*removing flowers where we don't have the population and we don't have nectar and/or flower size*
+
+```{r}
+nectar_work <- nectar %>% filter(!is.na(Population)) %>%  filter(!is.na(nectar_μl)) %>% filter(!is.na(Corola_area_mm2))
+```
+
+
+*summarizing how many flowers and plants we have data for*
+
+```{r, warning=FALSE, message=FALSE}
+
+nectar_work_sum <- nectar_work %>% group_by(Population) %>%  summarise(N_plants=length(unique(Plant_id)), N_flowers=length(flower_id))
+kable(nectar_work_sum)
+```
+
+
+*making a list of populations with 8 or more plants sampled*
+
+```{r}
+nectar_list <- nectar_work_sum %>% filter(N_plants >= 8)
+```
+
+
+*filtering the dataset to only contain those populations*
+
+```{r}
+nectar_work8 <- nectar_work %>% group_by(Population) %>% filter (length(unique(Plant_id))>=8)
+```
+
+
+
+### Analysis: nectar vs. size, all populations
+
+```{r}
+nectar_model<-lmer(nectar_μl~Corola_area_mm2+(1|Population/Plant_id), data=nectar_work8)
+
+par(mfrow=c(1,2))
+hist(resid(nectar_model))
+plot(predict(nectar_model),resid(nectar_model)) ; abline(h=0)
+```
+The residuals get a little better with a square-root transformation, but it's not a huge difference.
+
+```{r}
+ggplot(aes(x=Corola_area_mm2, y=nectar_μl), data=nectar_work8)+geom_point(aes(color=Population))+geom_smooth(method="lm",color="black")+theme_classic()+xlab(expression(paste("Corolla area (", mm^2 ,")"))) + ylab(expression(paste("Nectar volume (", mu,"l)")))
+```
+I think this works for now, but if we use all of this data, it's probably not effective to show this many populations in colors. Maybe we don't need to color the points by population here if we do a population by population analysis. Another option could be coloring the points by mating system, or region.
+
+## Analysis: nectar vs. size, population by population
+
+```{r, warning=FALSE, message=FALSE}
+ggplot(aes(x=Corola_area_mm2, y=nectar_μl, color=Population), data=nectar_work8)+geom_point()+
+  facet_wrap(~Population, scales="free")+geom_smooth(method="lm", color="black")+theme_classic()+xlab(expression(paste("Corolla area (", mm^2 ,")"))) + ylab(expression(paste("Nectar volume (", mu,"l)")))
+
+
+f <- function(df) summary(lmer(nectar_μl ~ Corola_area_mm2 +(1|Plant_id), data = df))
+
+v <- lapply(split(nectar_work8, nectar_work8$Population), f)
+
+Pop=sort(as.factor(c(unique(nectar_work8$Population),unique(nectar_work8$Population))))
+
+results<-data.frame("Estimate"=numeric(), "Std. Error"=numeric(), "df"=numeric(), "t value"=numeric(), "Pr(>|t|)"=numeric())
+
+
+for (i in 1:29){
+  z<-as.data.frame(v[[i]]$coefficients)
+  results<-rbind(results,z)
+}
+
+results<-cbind(results, Pop)
+
+
+results<-results %>% tibble::rownames_to_column() 
+results <- results %>% filter(str_detect(rowname, "Corola")) %>% select(-rowname) %>% relocate(Pop) %>% mutate(Sig=if_else(`Pr(>|t|)`< 0.05, "Yes", "No")) 
+kable(results)
+
+
+```
+
+
+
+
+## If we want to only use the MSC data
+
+```{r}
+nectar_msc <- nectar_work %>% filter(Population=="G3"|Population=="G4"|Population=="G5"|
+                                       Population=="It10"|Population=="It13"|Population=="It15"|
+                                       Population=="It16"|Population=="It17"|Population=="It18"|
+                                       Population=="It2"|Population=="It4"|Population=="It5"|
+                                       Population=="It6"|Population=="It8"|Population=="It9")
+
+nectar_model<-lmer(nectar_μl~Corola_area_mm2+(1|Population/Plant_id), data=nectar_msc)
+ggplot(aes(x=Corola_area_mm2, y=nectar_μl), data=nectar_msc)+geom_point(aes(x=Corola_area_mm2, y=nectar_μl, color=Population))+geom_smooth(method="lm")+theme_classic()+xlab(expression(paste("Corolla area (", mm^2 ,")"))) + ylab(expression(paste("Nectar volume (", mu,"l)")))
+```
+
+
+
