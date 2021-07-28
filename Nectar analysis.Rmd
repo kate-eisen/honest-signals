@@ -26,14 +26,40 @@ library(readxl)
 library(lme4)
 library(lmerTest)
 library(knitr)
+library(lmerTest)
+library(emmeans)
 ```
 
+### Q1: Is there population differentiation in size in the field and the greenhouse?
 
-### Q2: Are size and scent honest signals for nectar rewards?
-Loading in the data
 ```{r, warning=FALSE, message=FALSE}
 nectar <- read_excel("nectar protocol.xlsx")
 ```
+
+### Q2: Are size and scent honest signals for nectar rewards?
+Loading in the data, filtering out the NAs, and selecting the populations with 8 or more plants
+```{r, warning=FALSE, message=FALSE}
+nectar <- read_excel("nectar protocol.xlsx")
+
+nectar_work <- nectar %>% filter(!is.na(Population)) %>%  filter(!is.na(nectar_μl)) %>% filter(!is.na(Corola_area_mm2))
+
+nectar_work8 <- nectar_work %>% group_by(Population) %>% filter (length(unique(Plant_id))>=8)
+
+```
+
+Analyzing population differences
+
+```{r}
+size_mod<- lmer(Corola_area_mm2~Population+(1|Plant_id), data = nectar_work8)
+
+anova(size_mod)
+
+emmeans(size_mod, pairwise~Population)
+emms<-emmeans(size_mod, "Population")
+plot(emms, comparisons = TRUE)
+
+```
+
 
 #### Summarizing and subsetting the dataset 
 
