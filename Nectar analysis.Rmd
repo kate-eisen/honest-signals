@@ -28,15 +28,10 @@ library(lmerTest)
 library(knitr)
 library(lmerTest)
 library(emmeans)
+library(ggpubr)
 ```
 
 ### Q1: Is there population differentiation in size in the field and the greenhouse?
-
-```{r, warning=FALSE, message=FALSE}
-nectar <- read_excel("nectar protocol.xlsx")
-```
-
-### Q2: Are size and scent honest signals for nectar rewards?
 Loading in the data, filtering out the NAs, and selecting the populations with 8 or more plants
 ```{r, warning=FALSE, message=FALSE}
 nectar <- read_excel("nectar protocol.xlsx")
@@ -46,7 +41,6 @@ nectar_work <- nectar %>% filter(!is.na(Population)) %>%  filter(!is.na(nectar_�
 nectar_work8 <- nectar_work %>% group_by(Population) %>% filter (length(unique(Plant_id))>=8)
 
 ```
-
 Analyzing population differences
 
 ```{r}
@@ -54,19 +48,43 @@ size_mod<- lmer(Corola_area_mm2~Population+(1|Plant_id), data = nectar_work8)
 
 anova(size_mod)
 
-emmeans(size_mod, pairwise~Population)
+#emmeans(size_mod, pairwise~Population)
 emms<-emmeans(size_mod, "Population")
+#pwpm(emms)
 plot(emms, comparisons = TRUE)
 
 ```
 
+### Q2: Are size and scent honest signals for nectar rewards?
+
+#### scent work
+
+Need to make an object with average nectar values per plant for those populations with sufficient plants. Then, we can merge these data with the scent data.
+
+```{r}
+nectar <- read_excel("nectar protocol.xlsx")
+
+nectar_work <- nectar %>% filter(!is.na(Population)) %>%  filter(!is.na(nectar_μl)) %>% filter(!is.na(Corola_area_mm2))
+
+nectar_work8 <- nectar_work %>% group_by(Population) %>% filter (length(unique(Plant_id))>=8)
+
+nectar_8_avg <- nectar_work8 %>% group_by(Population, Plant_id) %>% summarize(Mean_nectar=mean(nectar_μl))
+
+```
+
+
+
+#### nectar work
+```{r, warning=FALSE, message=FALSE}
+nectar <- read_excel("nectar protocol.xlsx")
+```
 
 #### Summarizing and subsetting the dataset 
 
 *summarizing the NAs*
 
 ```{r}
-kable(nectar %>% filter(is.na(Population)) %>% group_by(Plant_id) %>% summarise(N=length(unique(flower_id))))
+#kable(nectar %>% filter(is.na(Population)) %>% group_by(Plant_id) %>% summarise(N=length(unique(flower_id))))
 ```
 
 *removing flowers where we don't have the population and we don't have nectar and/or flower size*
@@ -109,19 +127,18 @@ par(mfrow=c(1,2))
 hist(resid(nectar_model))
 plot(predict(nectar_model),resid(nectar_model)) ; abline(h=0)
 ```
+
 The residuals get a little better with a square-root transformation, but it's not a huge difference.
 
-```{r}
+```{r, warning=FALSE, message=FALSE}
 ggplot(aes(x=Corola_area_mm2, y=nectar_μl), data=nectar_work8)+geom_point(aes(color=Population))+geom_smooth(method="lm",color="black")+theme_classic()+xlab(expression(paste("Corolla area (", mm^2 ,")"))) + ylab(expression(paste("Nectar volume (", mu,"l)")))
 ```
+
 I think this works for now, but if we use all of this data, it's probably not effective to show this many populations in colors. Maybe we don't need to color the points by population here if we do a population by population analysis. Another option could be coloring the points by mating system, or region.
 
 ## Analysis: nectar vs. size, population by population
 
 ```{r, warning=FALSE, message=FALSE}
-ggplot(aes(x=Corola_area_mm2, y=nectar_μl, color=Population), data=nectar_work8)+geom_point()+
-  facet_wrap(~Population, scales="free")+geom_smooth(method="lm", color="black")+theme_classic()+xlab(expression(paste("Corolla area (", mm^2 ,")"))) + ylab(expression(paste("Nectar volume (", mu,"l)")))
-
 
 f <- function(df) summary(lmer(nectar_μl ~ Corola_area_mm2 +(1|Plant_id), data = df))
 
@@ -140,9 +157,15 @@ for (i in 1:29){
 results<-cbind(results, Pop)
 
 
-results<-results %>% tibble::rownames_to_column() 
-results <- results %>% filter(str_detect(rowname, "Corola")) %>% select(-rowname) %>% relocate(Pop) %>% mutate(Sig=if_else(`Pr(>|t|)`< 0.05, "Yes", "No")) 
+results<-results %>% tibble::rownames_to_column("X") 
+results <- results %>% filter(str_detect(X, "Corola"))  %>% mutate(Sig=if_else(`Pr(>|t|)`< 0.05, "Yes", "No")) %>% select(-X) %>% relocate(Pop) 
+results.sig<-results %>% filter(Sig=="Yes")
 kable(results)
+
+lines<-nectar_work8 %>% filter(Population %in% results.sig$Pop)
+
+ggplot(aes(x=Corola_area_mm2, y=nectar_μl, color=Population), data=nectar_work8)+geom_point()+
+  facet_wrap(~Population, scales="free")+theme_classic()+xlab(expression(paste("Corolla area (", mm^2 ,")"))) + ylab(expression(paste("Nectar volume (", mu,"l)")))+geom_smooth(data=lines, method="lm", color="black")
 
 
 ```
@@ -164,4 +187,53 @@ ggplot(aes(x=Corola_area_mm2, y=nectar_μl), data=nectar_msc)+geom_point(aes(x=C
 ```
 
 
+### Q3: Are populations pollen-limited? 
+
+```{r, warning=FALSE, message=FALSE}
+seeds <- read_csv("seed_data.csv")
+
+seeds_work <- seeds %>% filter(Treatment == "hp" | Treatment == "c")
+
+#looking at number of plants that had zeros in the hp fruits, to see if we really need to drop plants 
+zees<-seeds_work %>% group_by(Population, Plant_ID) %>% filter(Treatment== "hp") %>% summarize(zeros=sum(Seeds_final==0), nonzeroes=sum(Seeds_final!=0))
+
+zees2<-seeds_work %>% group_by(Population, Plant_ID, Treatment) %>%  summarize(zeros=sum(Seeds_final==0), nonzeroes=sum(Seeds_final!=0)) %>% pivot_wider(names_from=Treatment, values_from=c(zeros, nonzeroes))
+
+
+#for now, we will only analyze plants where there were fewer than 2 zero-seed hand-pollinated fruits, following Sotiria's criteria
+keep_list <- zees2 %>% filter(zeros_hp <2) %>% mutate(ID=paste(Population, Plant_ID))
+
+seeds_work2<- seeds_work %>% mutate(ID=paste(Population, Plant_ID)) %>% filter(ID %in% keep_list$ID) %>% mutate(Treatment=factor(Treatment, levels=c("hp", "c")))
+
+```
+
+Run an lmer for each population
+
+```{r, warning=FALSE, message=FALSE}
+f <- function(df) as.data.frame(emmeans(lmer(Seeds_final ~ Treatment +(1|Plant_ID), data = df), "Treatment"))
+
+v <- lapply(split(seeds_work2, seeds_work2$Population), f)
+
+
+f2 <- function(df) as.data.frame(pairs(emmeans(lmer(Seeds_final ~ Treatment +(1|Plant_ID), data = df), "Treatment")))
+
+v3 <- lapply(split(seeds_work2, seeds_work2$Population), f2)
+
+v4 <-do.call(rbind.data.frame, v3)
+v4$Pop<-rownames(v4)
+rownames(v4)<-c()
+v4$sig<-ifelse(v4$p.value<0.05, "*", "")
+
+v2<-do.call(rbind.data.frame, v)
+
+Pop=sort(as.factor(c(unique(seeds_work2$Population),unique(seeds_work2$Population))))
+
+
+v2<-data.frame(v2, Pop, row.names = c())
+
+kable(v2)
+kable(v4)
+
+ggplot(aes(x=Treatment, y=emmean), data=v2) + facet_wrap(~Pop) +geom_point()+geom_errorbar(aes(ymin=emmean-SE, ymax=emmean+SE), width=0.2) +ylab("Estimated marginal mean") + theme_classic()+geom_text(aes(x=1.5, y=20, label=sig),data=v4, size=6 )
+```
 

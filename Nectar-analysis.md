@@ -31,11 +31,48 @@ library(readxl)
 library(lme4)
 library(lmerTest)
 library(knitr)
+library(lmerTest)
+library(emmeans)
+library(ggpubr)
 ```
 
-### Q2: Are size and scent honest signals for nectar rewards?
+### Q1: Is there population differentiation in size in the field and the greenhouse?
 
-Loading in the data
+Loading in the data, filtering out the NAs, and selecting the
+populations with 8 or more plants
+
+``` r
+nectar <- read_excel("nectar protocol.xlsx")
+
+nectar_work <- nectar %>% filter(!is.na(Population)) %>%  filter(!is.na(nectar_μl)) %>% filter(!is.na(Corola_area_mm2))
+
+nectar_work8 <- nectar_work %>% group_by(Population) %>% filter (length(unique(Plant_id))>=8)
+```
+
+Analyzing population differences
+
+``` r
+size_mod<- lmer(Corola_area_mm2~Population+(1|Plant_id), data = nectar_work8)
+
+anova(size_mod)
+```
+
+    ## Type III Analysis of Variance Table with Satterthwaite's method
+    ##            Sum Sq Mean Sq NumDF  DenDF F value    Pr(>F)    
+    ## Population 250372  8941.9    28 291.19   37.99 < 2.2e-16 ***
+    ## ---
+    ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+``` r
+#emmeans(size_mod, pairwise~Population)
+emms<-emmeans(size_mod, "Population")
+#pwpm(emms)
+plot(emms, comparisons = TRUE)
+```
+
+![](Nectar-analysis_files/figure-gfm/unnamed-chunk-3-1.png)<!-- -->
+
+### Q2: Are size and scent honest signals for nectar rewards?
 
 ``` r
 nectar <- read_excel("nectar protocol.xlsx")
@@ -46,26 +83,8 @@ nectar <- read_excel("nectar protocol.xlsx")
 *summarizing the NAs*
 
 ``` r
-kable(nectar %>% filter(is.na(Population)) %>% group_by(Plant_id) %>% summarise(N=length(unique(flower_id))))
+#kable(nectar %>% filter(is.na(Population)) %>% group_by(Plant_id) %>% summarise(N=length(unique(flower_id))))
 ```
-
-| Plant\_id |   N |
-|----------:|----:|
-|        91 |   3 |
-|       104 |   3 |
-|       121 |   3 |
-|       182 |   3 |
-|       190 |   3 |
-|       201 |   3 |
-|       206 |   3 |
-|       211 |   3 |
-|       237 |   3 |
-|       259 |   3 |
-|       274 |   3 |
-|       275 |   3 |
-|       296 |   3 |
-|       297 |   3 |
-|        NA |   6 |
 
 *removing flowers where we don’t have the population and we don’t have
 nectar and/or flower size*
@@ -142,31 +161,24 @@ hist(resid(nectar_model))
 plot(predict(nectar_model),resid(nectar_model)) ; abline(h=0)
 ```
 
-![](Nectar-analysis_files/figure-gfm/unnamed-chunk-8-1.png)<!-- --> The
-residuals get a little better with a square-root transformation, but
+![](Nectar-analysis_files/figure-gfm/unnamed-chunk-10-1.png)<!-- -->
+
+The residuals get a little better with a square-root transformation, but
 it’s not a huge difference.
 
 ``` r
 ggplot(aes(x=Corola_area_mm2, y=nectar_μl), data=nectar_work8)+geom_point(aes(color=Population))+geom_smooth(method="lm",color="black")+theme_classic()+xlab(expression(paste("Corolla area (", mm^2 ,")"))) + ylab(expression(paste("Nectar volume (", mu,"l)")))
 ```
 
-    ## `geom_smooth()` using formula 'y ~ x'
+![](Nectar-analysis_files/figure-gfm/unnamed-chunk-11-1.png)<!-- -->
 
-![](Nectar-analysis_files/figure-gfm/unnamed-chunk-9-1.png)<!-- --> I
-think this works for now, but if we use all of this data, it’s probably
-not effective to show this many populations in colors. Maybe we don’t
-need to color the points by population here if we do a population by
-population analysis. Another option could be coloring the points by
+I think this works for now, but if we use all of this data, it’s
+probably not effective to show this many populations in colors. Maybe we
+don’t need to color the points by population here if we do a population
+by population analysis. Another option could be coloring the points by
 mating system, or region.
 
 ## Analysis: nectar vs. size, population by population
-
-``` r
-ggplot(aes(x=Corola_area_mm2, y=nectar_μl, color=Population), data=nectar_work8)+geom_point()+
-  facet_wrap(~Population, scales="free")+geom_smooth(method="lm", color="black")+theme_classic()+xlab(expression(paste("Corolla area (", mm^2 ,")"))) + ylab(expression(paste("Nectar volume (", mu,"l)")))
-```
-
-![](Nectar-analysis_files/figure-gfm/unnamed-chunk-10-1.png)<!-- -->
 
 ``` r
 f <- function(df) summary(lmer(nectar_μl ~ Corola_area_mm2 +(1|Plant_id), data = df))
@@ -186,8 +198,9 @@ for (i in 1:29){
 results<-cbind(results, Pop)
 
 
-results<-results %>% tibble::rownames_to_column() 
-results <- results %>% filter(str_detect(rowname, "Corola")) %>% select(-rowname) %>% relocate(Pop) %>% mutate(Sig=if_else(`Pr(>|t|)`< 0.05, "Yes", "No")) 
+results<-results %>% tibble::rownames_to_column("X") 
+results <- results %>% filter(str_detect(X, "Corola"))  %>% mutate(Sig=if_else(`Pr(>|t|)`< 0.05, "Yes", "No")) %>% select(-X) %>% relocate(Pop) 
+results.sig<-results %>% filter(Sig=="Yes")
 kable(results)
 ```
 
@@ -223,6 +236,15 @@ kable(results)
 | It9    |  0.0018697 |  0.0003466 | 25.000000 |  5.3942611 |     0.0000135 | Yes |
 | S1     |  0.0014483 |  0.0004314 | 17.196609 |  3.3567465 |     0.0036941 | Yes |
 
+``` r
+lines<-nectar_work8 %>% filter(Population %in% results.sig$Pop)
+
+ggplot(aes(x=Corola_area_mm2, y=nectar_μl, color=Population), data=nectar_work8)+geom_point()+
+  facet_wrap(~Population, scales="free")+theme_classic()+xlab(expression(paste("Corolla area (", mm^2 ,")"))) + ylab(expression(paste("Nectar volume (", mu,"l)")))+geom_smooth(data=lines, method="lm", color="black")
+```
+
+![](Nectar-analysis_files/figure-gfm/unnamed-chunk-12-1.png)<!-- -->
+
 ## If we want to only use the MSC data
 
 ``` r
@@ -238,4 +260,102 @@ ggplot(aes(x=Corola_area_mm2, y=nectar_μl), data=nectar_msc)+geom_point(aes(x=C
 
     ## `geom_smooth()` using formula 'y ~ x'
 
-![](Nectar-analysis_files/figure-gfm/unnamed-chunk-11-1.png)<!-- -->
+![](Nectar-analysis_files/figure-gfm/unnamed-chunk-13-1.png)<!-- -->
+
+### Q3: Are populations pollen-limited?
+
+``` r
+seeds <- read_csv("seed_data.csv")
+
+seeds_work <- seeds %>% filter(Treatment == "hp" | Treatment == "c")
+
+#looking at number of plants that had zeros in the hp fruits, to see if we really need to drop plants 
+zees<-seeds_work %>% group_by(Population, Plant_ID) %>% filter(Treatment== "hp") %>% summarize(zeros=sum(Seeds_final==0), nonzeroes=sum(Seeds_final!=0))
+
+zees2<-seeds_work %>% group_by(Population, Plant_ID, Treatment) %>%  summarize(zeros=sum(Seeds_final==0), nonzeroes=sum(Seeds_final!=0)) %>% pivot_wider(names_from=Treatment, values_from=c(zeros, nonzeroes))
+
+
+#for now, we will only analyze plants where there were fewer than 2 zero-seed hand-pollinated fruits, following Sotiria's criteria
+keep_list <- zees2 %>% filter(zeros_hp <2) %>% mutate(ID=paste(Population, Plant_ID))
+
+seeds_work2<- seeds_work %>% mutate(ID=paste(Population, Plant_ID)) %>% filter(ID %in% keep_list$ID) %>% mutate(Treatment=factor(Treatment, levels=c("hp", "c")))
+```
+
+Run an lmer for each population
+
+``` r
+f <- function(df) as.data.frame(emmeans(lmer(Seeds_final ~ Treatment +(1|Plant_ID), data = df), "Treatment"))
+
+v <- lapply(split(seeds_work2, seeds_work2$Population), f)
+
+
+f2 <- function(df) as.data.frame(pairs(emmeans(lmer(Seeds_final ~ Treatment +(1|Plant_ID), data = df), "Treatment")))
+
+v3 <- lapply(split(seeds_work2, seeds_work2$Population), f2)
+
+v4 <-do.call(rbind.data.frame, v3)
+v4$Pop<-rownames(v4)
+rownames(v4)<-c()
+v4$sig<-ifelse(v4$p.value<0.05, "*", "")
+
+v2<-do.call(rbind.data.frame, v)
+
+Pop=sort(as.factor(c(unique(seeds_work2$Population),unique(seeds_work2$Population))))
+
+
+v2<-data.frame(v2, Pop, row.names = c())
+
+kable(v2)
+```
+
+| Treatment |    emmean |       SE |       df |  lower.CL |  upper.CL | Pop |
+|:----------|----------:|---------:|---------:|----------:|----------:|:----|
+| hp        | 14.942885 | 1.818878 | 31.04051 | 11.233455 | 18.652314 | G1  |
+| c         | 12.582700 | 1.808288 | 30.41375 |  8.891789 | 16.273612 | G1  |
+| hp        | 15.363696 | 1.831281 | 22.06828 | 11.566534 | 19.160858 | G3  |
+| c         | 11.807043 | 1.831281 | 22.06828 |  8.009881 | 15.604205 | G3  |
+| hp        | 22.506316 | 1.454066 | 40.41734 | 19.568485 | 25.444147 | G6  |
+| c         | 15.370490 | 1.467233 | 41.81546 | 12.409107 | 18.331873 | G6  |
+| hp        | 16.800679 | 2.269341 | 19.96026 | 12.066313 | 21.535045 | G7  |
+| c         | 13.782001 | 2.268339 | 19.90233 |  9.048841 | 18.515162 | G7  |
+| hp        | 11.975090 | 1.612601 | 44.60462 |  8.726350 | 15.223829 | G8  |
+| c         |  7.993084 | 1.609851 | 44.34126 |  4.749348 | 11.236820 | G8  |
+| hp        | 16.158607 | 1.627895 | 29.92189 | 12.833639 | 19.483575 | G9  |
+| c         |  7.312217 | 1.646973 | 31.17245 |  3.953947 | 10.670487 | G9  |
+| hp        | 12.723741 | 1.398571 | 21.94362 |  9.822850 | 15.624631 | I10 |
+| c         |  8.401876 | 1.437773 | 23.83682 |  5.433383 | 11.370368 | I10 |
+| hp        | 18.433270 | 1.747025 | 32.84910 | 14.878302 | 21.988239 | I15 |
+| c         | 18.153988 | 1.769396 | 33.95414 | 14.557964 | 21.750013 | I15 |
+| hp        | 14.975390 | 1.556236 | 32.30146 | 11.806601 | 18.144179 | I16 |
+| c         | 12.946049 | 1.560226 | 32.68158 |  9.770569 | 16.121529 | I16 |
+| hp        | 21.970017 | 1.645420 | 35.48333 | 18.631263 | 25.308770 | I17 |
+| c         | 19.830410 | 1.628076 | 34.15938 | 16.522329 | 23.138491 | I17 |
+| hp        | 17.725440 | 1.877355 | 40.16199 | 13.931640 | 21.519239 | I4  |
+| c         | 10.938649 | 1.760266 | 34.11451 |  7.361800 | 14.515499 | I4  |
+| hp        |  6.547457 | 1.569241 | 17.31530 |  3.241235 |  9.853679 | I7  |
+| c         |  8.059441 | 1.628184 | 21.73454 |  4.680401 | 11.438481 | I7  |
+
+``` r
+kable(v4)
+```
+
+| contrast |   estimate |       SE |        df |    t.ratio |   p.value | Pop | sig |
+|:---------|-----------:|---------:|----------:|-----------:|----------:|:----|:----|
+| hp - c   |  2.3601842 | 1.535166 | 139.53757 |  1.5374132 | 0.1264567 | G1  |     |
+| hp - c   |  3.5566529 | 1.811759 |  94.53170 |  1.9630934 | 0.0525744 | G3  |     |
+| hp - c   |  7.1358258 | 1.289801 | 200.74609 |  5.5325007 | 0.0000001 | G6  | \*  |
+| hp - c   |  3.0186775 | 1.489123 | 115.18440 |  2.0271511 | 0.0449557 | G7  | \*  |
+| hp - c   |  3.9820058 | 1.905295 | 101.62443 |  2.0899680 | 0.0391169 | G8  | \*  |
+| hp - c   |  8.8463901 | 1.912805 | 104.63099 |  4.6248253 | 0.0000108 | G9  | \*  |
+| hp - c   |  4.3218650 | 1.281442 |  95.53222 |  3.3726569 | 0.0010763 | I10 | \*  |
+| hp - c   |  0.2792821 | 1.650001 | 145.67393 |  0.1692618 | 0.8658256 | I15 |     |
+| hp - c   |  2.0293409 | 1.262732 | 153.94157 |  1.6071036 | 0.1100808 | I16 |     |
+| hp - c   |  2.1396069 | 1.629993 | 178.81598 |  1.3126482 | 0.1909838 | I17 |     |
+| hp - c   |  6.7867904 | 1.976656 | 105.58413 |  3.4334702 | 0.0008524 | I4  | \*  |
+| hp - c   | -1.5119842 | 2.223285 |  35.59059 | -0.6800675 | 0.5008617 | I7  |     |
+
+``` r
+ggplot(aes(x=Treatment, y=emmean), data=v2) + facet_wrap(~Pop) +geom_point()+geom_errorbar(aes(ymin=emmean-SE, ymax=emmean+SE), width=0.2) +ylab("Estimated marginal mean") + theme_classic()+geom_text(aes(x=1.5, y=20, label=sig),data=v4, size=6 )
+```
+
+![](Nectar-analysis_files/figure-gfm/unnamed-chunk-15-1.png)<!-- -->
