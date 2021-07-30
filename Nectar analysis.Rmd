@@ -110,9 +110,19 @@ nectar_work8 <- nectar_work %>% group_by(Population) %>% filter (length(unique(P
 
 nectar_8_avg <- nectar_work8 %>% group_by(Population, Plant_id) %>% summarize(Mean_nectar=mean(nectar_μl))
 
+#add scent into this df
+
+nectar_model<-lmer(nectar_μl~scent+(1|Population), data=nectar_8_avg)
+
+par(mfrow=c(1,2))
+hist(resid(nectar_model))
+plot(predict(nectar_model),resid(nectar_model)) ; abline(h=0)
+
 ```
 
-
+```{r, warning=FALSE, message=FALSE}
+ggplot(aes(x=scent, y=nectar_μl), data=nectar_8_avg)+geom_point(aes(color=Population))+geom_smooth(method="lm",color="black")+theme_classic()+xlab(expression(paste("Total scent emission (ng", h^-1, flower^-1, ")"))) + ylab(expression(paste("Nectar volume (", mu,"l)")))
+```
 
 #### nectar work
 ```{r, warning=FALSE, message=FALSE}
