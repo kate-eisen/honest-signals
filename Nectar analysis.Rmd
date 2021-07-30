@@ -32,6 +32,8 @@ library(ggpubr)
 ```
 
 ### Q1: Is there population differentiation in size in the field and the greenhouse?
+
+*Greenhouse*
 Loading in the data, filtering out the NAs, and selecting the populations with 8 or more plants
 ```{r, warning=FALSE, message=FALSE}
 nectar <- read_excel("nectar protocol.xlsx")
@@ -54,6 +56,44 @@ emms<-emmeans(size_mod, "Population")
 plot(emms, comparisons = TRUE)
 
 ```
+
+*Field*
+
+```{r}
+field <- read_csv("field_data.csv")
+field_work <- field %>% filter(!is.na(FlowerSize))
+
+size_mod<- lm(FlowerSize~Population, data = field_work)
+
+anova(size_mod)
+
+emms<-emmeans(size_mod, pairwise~Population)
+plot(emms, comparisons = TRUE)
+
+```
+
+*comparing the field and the greenhouse*
+
+```{r}
+Pops <- c("G3", "I10", "I15", "I16", "I17", "I4","It10", "It15", "It16", "It17", "It4")
+
+field_combine <- field_work %>% filter(Population %in% Pops) %>%  group_by(Population) %>% summarize(FlSizeMean = mean(FlowerSize), FlSizeSE=std.error(FlowerSize)) %>% mutate(Source="Field")
+
+gh_combine <- nectar_work8 %>% filter(Population %in% Pops) %>%  group_by(Population) %>% summarize(FlSizeMean = mean(Corola_area_mm2), FlSizeSE=std.error(Corola_area_mm2)) %>% mutate(Source="Greenhouse")
+
+combine <- rbind(field_combine, gh_combine)
+combine[8:12,1]<-c("I10", "I15", "I16", "I17", "I4")
+
+combine_wide <- combine %>% pivot_wider(names_from=Source, values_from=c(FlSizeMean,FlSizeSE))
+
+combine_mod <- lm(FlSizeMean_Greenhouse~FlSizeMean_Field, data=combine_wide)
+
+ggplot(aes(x=FlSizeMean_Field, y=FlSizeMean_Greenhouse), data=combine_wide)+geom_point()+geom_errorbar(aes(ymin=FlSizeMean_Greenhouse-FlSizeSE_Greenhouse, ymax=FlSizeMean_Greenhouse+FlSizeSE_Greenhouse))+geom_errorbarh(aes(xmin=FlSizeMean_Field-FlSizeSE_Field, xmax=FlSizeMean_Field+FlSizeSE_Field))+xlab("Flower size in natural populations")+ylab("Flower size in greenhouse")+theme_classic()
+
+
+```
+
+
 
 ### Q2: Are size and scent honest signals for nectar rewards?
 
