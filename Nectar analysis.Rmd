@@ -13,10 +13,6 @@ Question 2: Are size and scent honest signals for nectar rewards?
 
 *Approach*: Correlation between size and rewards, and between scent and rewards. First do a regression of all plants, with plant nested within population as a random effect. Then do regressions for each population.
 
-Question 3: Are populations pollen limited? [Q3]
-
-*Approach*: Paired t-tests comparing controlled vs. open pollinated seed set in each population.
-
   
 ### Packages and start up code:
 
@@ -102,7 +98,7 @@ ggplot(aes(x=FlSizeMean_Field, y=FlSizeMean_Greenhouse), data=combine_wide)+geom
 
 #### scent work
 
-Need to make an object with average nectar values per plant for those populations with sufficient plants. Then, we can merge these data with the scent data.
+This is an object with average nectar values per plant for those populations with sufficient plants. We can merge these data with the scent data.
 
 ```{r, message=FALSE,warning=FALSE}
 nectar <- read_excel("nectar protocol.xlsx")
@@ -184,7 +180,9 @@ plot(predict(nectar_model),resid(nectar_model)) ; abline(h=0)
 The residuals get a little better with a square-root transformation, but it's not a huge difference.
 
 ```{r, warning=FALSE, message=FALSE}
-ggplot(aes(x=Corola_area_mm2, y=nectar_μl), data=nectar_work8)+geom_point(aes(color=Population))+geom_smooth(method="lm",color="black")+theme_classic()+xlab(expression(paste("Corolla area (", mm^2 ,")"))) + ylab(expression(paste("Nectar volume (", mu,"l)")))
+
+
+ggplot(aes(x=Corola_area_mm2, y=nectar_μl), data=nectar_work8)+geom_point(aes(color=Population))+geom_smooth( method="lm",color="black")+theme_classic()+xlab(expression(paste("Corolla area (", mm^2 ,")"))) + ylab(expression(paste("Nectar volume (", mu,"l)")))
 ```
 
 I think this works for now, but if we use all of this data, it's probably not effective to show this many populations in colors. Maybe we don't need to color the points by population here if we do a population by population analysis. Another option could be coloring the points by mating system, or region.
@@ -193,30 +191,42 @@ I think this works for now, but if we use all of this data, it's probably not ef
 
 ```{r, warning=FALSE, message=FALSE}
 
+#writing a function to generate a model summary
+
 f <- function(df) summary(lmer(nectar_μl ~ Corola_area_mm2 +(1|Plant_id), data = df))
 
+#running this model on the data subset by population
+
 v <- lapply(split(nectar_work8, nectar_work8$Population), f)
+
+# making a list of the populations and a blank dataframe that will store the results 
 
 Pop=sort(as.factor(c(unique(nectar_work8$Population),unique(nectar_work8$Population))))
 
 results<-data.frame("Estimate"=numeric(), "Std. Error"=numeric(), "df"=numeric(), "t value"=numeric(), "Pr(>|t|)"=numeric())
 
+#extracting the coefficients from each model
 
 for (i in 1:29){
   z<-as.data.frame(v[[i]]$coefficients)
   results<-rbind(results,z)
 }
 
+# adding the population labels to these results
+
 results<-cbind(results, Pop)
 
-
+#cleaning up the results table to only contain the slope estimates; adding a significance column
 results<-results %>% tibble::rownames_to_column("X") 
 results <- results %>% filter(str_detect(X, "Corola"))  %>% mutate(Sig=if_else(`Pr(>|t|)`< 0.05, "Yes", "No")) %>% select(-X) %>% relocate(Pop) 
-results.sig<-results %>% filter(Sig=="Yes")
+
 kable(results)
 
+#creating an object of just the significant ones, to then create an object with only the data from populations where there is a significant correlation, so that the plot only has lines drawn for the significant relationships
+results.sig<-results %>% filter(Sig=="Yes")
 lines<-nectar_work8 %>% filter(Population %in% results.sig$Pop)
 
+##plotting the population level results
 ggplot(aes(x=Corola_area_mm2, y=nectar_μl, color=Population), data=nectar_work8)+geom_point()+
   facet_wrap(~Population, scales="free")+theme_classic()+xlab(expression(paste("Corolla area (", mm^2 ,")"))) + ylab(expression(paste("Nectar volume (", mu,"l)")))+geom_smooth(data=lines, method="lm", color="black")
 
