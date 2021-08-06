@@ -34,12 +34,13 @@ library(knitr)
 library(lmerTest)
 library(emmeans)
 library(ggpubr)
+library(plotrix)
 ```
 
 ### Q1: Is there population differentiation in size in the field and the greenhouse?
 
-Loading in the data, filtering out the NAs, and selecting the
-populations with 8 or more plants
+*Greenhouse* Loading in the data, filtering out the NAs, and selecting
+the populations with 8 or more plants
 
 ``` r
 nectar <- read_excel("nectar protocol.xlsx")
@@ -72,7 +73,105 @@ plot(emms, comparisons = TRUE)
 
 ![](Nectar-analysis_files/figure-gfm/unnamed-chunk-3-1.png)<!-- -->
 
+*Field*
+
+``` r
+field <- read_csv("field_data.csv")
+field_work <- field %>% filter(!is.na(FlowerSize))
+
+field_work %>% group_by(Population) %>% summarize(N=length(Id))
+```
+
+    ## # A tibble: 12 x 2
+    ##    Population     N
+    ##    <chr>      <int>
+    ##  1 G1            30
+    ##  2 G3            29
+    ##  3 G6            30
+    ##  4 G7            27
+    ##  5 G8            28
+    ##  6 G9            18
+    ##  7 I10           23
+    ##  8 I15           30
+    ##  9 I16           28
+    ## 10 I17           28
+    ## 11 I4            30
+    ## 12 I7            21
+
+``` r
+size_mod<- lm(FlowerSize~Population, data = field_work)
+
+anova(size_mod)
+```
+
+    ## Analysis of Variance Table
+    ## 
+    ## Response: FlowerSize
+    ##             Df  Sum Sq Mean Sq F value    Pr(>F)    
+    ## Population  11  797.59  72.508  13.761 < 2.2e-16 ***
+    ## Residuals  310 1633.42   5.269                      
+    ## ---
+    ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+``` r
+emms<-emmeans(size_mod, pairwise~Population)
+plot(emms, comparisons = TRUE)
+```
+
+![](Nectar-analysis_files/figure-gfm/unnamed-chunk-4-1.png)<!-- -->
+
+*comparing the field and the greenhouse*
+
+``` r
+Pops <- c("G3", "I10", "I15", "I16", "I17", "I4","It10", "It15", "It16", "It17", "It4")
+
+field_combine <- field_work %>% filter(Population %in% Pops) %>%  group_by(Population) %>% summarize(FlSizeMean = mean(FlowerSize), FlSizeSE=std.error(FlowerSize)) %>% mutate(Source="Field")
+
+gh_combine <- nectar_work8 %>% filter(Population %in% Pops) %>%  group_by(Population) %>% summarize(FlSizeMean = mean(Corola_area_mm2), FlSizeSE=std.error(Corola_area_mm2)) %>% mutate(Source="Greenhouse")
+
+combine <- rbind(field_combine, gh_combine)
+combine[8:12,1]<-c("I10", "I15", "I16", "I17", "I4")
+
+combine_wide <- combine %>% pivot_wider(names_from=Source, values_from=c(FlSizeMean,FlSizeSE))
+
+combine_mod <- lm(FlSizeMean_Greenhouse~FlSizeMean_Field, data=combine_wide)
+
+ggplot(aes(x=FlSizeMean_Field, y=FlSizeMean_Greenhouse), data=combine_wide)+geom_point()+geom_errorbar(aes(ymin=FlSizeMean_Greenhouse-FlSizeSE_Greenhouse, ymax=FlSizeMean_Greenhouse+FlSizeSE_Greenhouse))+geom_errorbarh(aes(xmin=FlSizeMean_Field-FlSizeSE_Field, xmax=FlSizeMean_Field+FlSizeSE_Field))+xlab("Flower size in natural populations")+ylab("Flower size in greenhouse")+theme_classic()
+```
+
+![](Nectar-analysis_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
+
 ### Q2: Are size and scent honest signals for nectar rewards?
+
+#### scent work
+
+Need to make an object with average nectar values per plant for those
+populations with sufficient plants. Then, we can merge these data with
+the scent data.
+
+``` r
+nectar <- read_excel("nectar protocol.xlsx")
+
+nectar_work <- nectar %>% filter(!is.na(Population)) %>%  filter(!is.na(nectar_μl)) %>% filter(!is.na(Corola_area_mm2))
+
+nectar_work8 <- nectar_work %>% group_by(Population) %>% filter (length(unique(Plant_id))>=8)
+
+nectar_8_avg <- nectar_work8 %>% group_by(Population, Plant_id) %>% summarize(Mean_nectar=mean(nectar_μl))
+
+#add scent into this df
+
+#nectar_model<-lmer(nectar_μl~scent+(1|Population), data=nectar_8_avg)
+
+#par(mfrow=c(1,2))
+#hist(resid(nectar_model))
+#plot(predict(nectar_model),resid(nectar_model)) ; abline(h=0)
+```
+
+``` r
+#ggplot(aes(x=scent, y=nectar_μl), #data=nectar_8_avg)+geom_point(aes(color=Population))+geom_smooth(method="lm",color="black")+theme_classic()+xlab(expression(paste("Total scent emission (ng", h^-1, flower^-1, ")"))) + ylab(expression(paste("Nectar volume (", mu,"l)")))
+```
+
+#### nectar work
 
 ``` r
 nectar <- read_excel("nectar protocol.xlsx")
@@ -161,7 +260,7 @@ hist(resid(nectar_model))
 plot(predict(nectar_model),resid(nectar_model)) ; abline(h=0)
 ```
 
-![](Nectar-analysis_files/figure-gfm/unnamed-chunk-10-1.png)<!-- -->
+![](Nectar-analysis_files/figure-gfm/unnamed-chunk-14-1.png)<!-- -->
 
 The residuals get a little better with a square-root transformation, but
 it’s not a huge difference.
@@ -170,7 +269,7 @@ it’s not a huge difference.
 ggplot(aes(x=Corola_area_mm2, y=nectar_μl), data=nectar_work8)+geom_point(aes(color=Population))+geom_smooth(method="lm",color="black")+theme_classic()+xlab(expression(paste("Corolla area (", mm^2 ,")"))) + ylab(expression(paste("Nectar volume (", mu,"l)")))
 ```
 
-![](Nectar-analysis_files/figure-gfm/unnamed-chunk-11-1.png)<!-- -->
+![](Nectar-analysis_files/figure-gfm/unnamed-chunk-15-1.png)<!-- -->
 
 I think this works for now, but if we use all of this data, it’s
 probably not effective to show this many populations in colors. Maybe we
@@ -243,7 +342,7 @@ ggplot(aes(x=Corola_area_mm2, y=nectar_μl, color=Population), data=nectar_work8
   facet_wrap(~Population, scales="free")+theme_classic()+xlab(expression(paste("Corolla area (", mm^2 ,")"))) + ylab(expression(paste("Nectar volume (", mu,"l)")))+geom_smooth(data=lines, method="lm", color="black")
 ```
 
-![](Nectar-analysis_files/figure-gfm/unnamed-chunk-12-1.png)<!-- -->
+![](Nectar-analysis_files/figure-gfm/unnamed-chunk-16-1.png)<!-- -->
 
 ## If we want to only use the MSC data
 
@@ -260,7 +359,7 @@ ggplot(aes(x=Corola_area_mm2, y=nectar_μl), data=nectar_msc)+geom_point(aes(x=C
 
     ## `geom_smooth()` using formula 'y ~ x'
 
-![](Nectar-analysis_files/figure-gfm/unnamed-chunk-13-1.png)<!-- -->
+![](Nectar-analysis_files/figure-gfm/unnamed-chunk-17-1.png)<!-- -->
 
 ### Q3: Are populations pollen-limited?
 
@@ -279,7 +378,25 @@ zees2<-seeds_work %>% group_by(Population, Plant_ID, Treatment) %>%  summarize(z
 keep_list <- zees2 %>% filter(zeros_hp <2) %>% mutate(ID=paste(Population, Plant_ID))
 
 seeds_work2<- seeds_work %>% mutate(ID=paste(Population, Plant_ID)) %>% filter(ID %in% keep_list$ID) %>% mutate(Treatment=factor(Treatment, levels=c("hp", "c")))
+
+seeds_work2 %>% group_by(Population) %>% summarize(N=length(unique(Plant_ID)))
 ```
+
+    ## # A tibble: 12 x 2
+    ##    Population     N
+    ##    <chr>      <int>
+    ##  1 G1            22
+    ##  2 G3            14
+    ##  3 G6            28
+    ##  4 G7            17
+    ##  5 G8            23
+    ##  6 G9            15
+    ##  7 I10           16
+    ##  8 I15           22
+    ##  9 I16           24
+    ## 10 I17           21
+    ## 11 I4            21
+    ## 12 I7             8
 
 Run an lmer for each population
 
@@ -358,4 +475,4 @@ kable(v4)
 ggplot(aes(x=Treatment, y=emmean), data=v2) + facet_wrap(~Pop) +geom_point()+geom_errorbar(aes(ymin=emmean-SE, ymax=emmean+SE), width=0.2) +ylab("Estimated marginal mean") + theme_classic()+geom_text(aes(x=1.5, y=20, label=sig),data=v4, size=6 )
 ```
 
-![](Nectar-analysis_files/figure-gfm/unnamed-chunk-15-1.png)<!-- -->
+![](Nectar-analysis_files/figure-gfm/unnamed-chunk-19-1.png)<!-- -->
