@@ -35,7 +35,7 @@ Loading in the data, filtering out the NAs, and selecting the populations with 8
 ```{r, warning=FALSE, message=FALSE}
 nectar <- read_excel("nectar protocol.xlsx")
 
-nectar_work <- nectar %>% filter(!is.na(Population)) %>%  filter(!is.na(nectar_μl)) %>% filter(!is.na(Corola_area_mm2))
+nectar_work <- nectar %>% filter(!is.na(Population)) %>%  filter(!is.na(nectar_μl)) %>% filter(!is.na(Corola_area_mm2)) %>% filter(Corola_area_mm2>0)
 
 nectar_work8 <- nectar_work %>% group_by(Population) %>% filter (length(unique(Plant_id))>=8)
 
@@ -103,7 +103,7 @@ This is an object with average nectar values per plant for those populations wit
 ```{r, message=FALSE,warning=FALSE}
 nectar <- read_excel("nectar protocol.xlsx")
 
-nectar_work <- nectar %>% filter(!is.na(Population)) %>%  filter(!is.na(nectar_μl)) %>% filter(!is.na(Corola_area_mm2))
+nectar_work <- nectar %>% filter(!is.na(Population)) %>%  filter(!is.na(nectar_μl)) %>% filter(!is.na(Corola_area_mm2)) %>% filter(Corola_area_mm2>0)
 
 nectar_work8 <- nectar_work %>% group_by(Population) %>% filter (length(unique(Plant_id))>=8)
 
@@ -139,7 +139,7 @@ nectar <- read_excel("nectar protocol.xlsx")
 *removing flowers where we don't have the population and we don't have nectar and/or flower size*
 
 ```{r}
-nectar_work <- nectar %>% filter(!is.na(Population)) %>%  filter(!is.na(nectar_μl)) %>% filter(!is.na(Corola_area_mm2))
+nectar_work <- nectar %>% filter(!is.na(Population)) %>%  filter(!is.na(nectar_μl)) %>% filter(!is.na(Corola_area_mm2)) %>% filter(Corola_area_mm2>0)
 ```
 
 
@@ -206,7 +206,7 @@ plot(predict(nectar_model),resid(nectar_model)) ; abline(h=0)
 anova(nectar_model)
 emmeans(nectar_model, "Mating_system")
 
-ggplot(aes(x=Corola_area_mm2, y=nectar_μl), data=nectar_work8)+geom_point(aes(color=Mating_system, shape=Mating_system), stroke=1.2)+geom_smooth(aes(color=Mating_system), method="lm")+geom_smooth(aes(color="All", shape="All"), method="lm", linetype=2, show.legend=TRUE)+theme_classic()+xlab(expression(paste("Corolla area (", mm^2 ,")"))) + ylab(expression(paste("Nectar volume (", mu,"l)")))+scale_color_discrete(name="Mating system", breaks=c("All", "SC", "SI"), labels=c("All", "Self-compatible", "Self-incompatible"))+scale_shape_manual(name="Mating system",values=c(NA, 0,1),breaks=c("All", "SC", "SI"), labels=c("All", "Self-compatible", "Self-incompatible"))
+ggplot(aes(x=Corola_area_mm2, y=nectar_μl), data=nectar_work8)+geom_point(aes(color=Mating_system, shape=Mating_system), stroke=1.2)+geom_smooth(aes(color=Mating_system), method="lm")+geom_smooth(aes(color="All", shape="All"), method="lm", linetype=2, show.legend=TRUE)+theme_classic(base_size=16)+xlab(expression(paste("Corolla area (", mm^2 ,")"))) + ylab(expression(paste("Nectar volume (", mu,"l)")))+scale_color_discrete(name="Mating system", breaks=c("All", "SC", "SI"), labels=c("All", "Self-compatible", "Self-incompatible"))+scale_shape_manual(name="Mating system",values=c(NA, 0,1),breaks=c("All", "SC", "SI"), labels=c("All", "Self-compatible", "Self-incompatible"))+theme(legend.position = "bottom")+ guides(color=guide_legend(override.aes=list(fill=NA)))
 
 #size vs. mating system
 
@@ -262,9 +262,14 @@ kable(results)
 results.sig<-results %>% filter(Sig=="Yes")
 lines<-nectar_work8 %>% filter(Population %in% results.sig$Pop)
 
+
 ##plotting the population level results
-ggplot(aes(x=Corola_area_mm2, y=nectar_μl, color=Population), data=nectar_work8)+geom_point()+
-  facet_wrap(~Population, scales="free")+theme_classic()+xlab(expression(paste("Corolla area (", mm^2 ,")"))) + ylab(expression(paste("Nectar volume (", mu,"l)")))+geom_smooth(data=lines, method="lm", color="black")
+
+nectar_work8$Population <- factor(nectar_work8$Population, levels=c("Aal04",  "Aal12",  "Aal29",  "Aal34c", "Aal36" , "AalDMB", "AalFC",  "AalSFH", "E3"  ,   "Fr1"  ,  "Fr2" ,   "Fr3"  , 
+ "Fr4"  ,"S1",  "G3"   ,  "G4"  ,   "G5"   ,  "It10"  , "It13"  , "It15"  , "It16" ,  "It17"  , "It18" ,  "It2" ,   "It4", "It5",    "It6"  ,  "It8" ,   "It9"      ))
+
+ggplot(aes(x=Corola_area_mm2, y=nectar_μl, color=Mating_system), data=nectar_work8)+geom_point()+
+  facet_wrap(~factor(Population), scales="free")+theme_classic(base_size = 16)+xlab(expression(paste("Corolla area (", mm^2 ,")"))) + ylab(expression(paste("Nectar volume (", mu,"l)")))+geom_smooth(data=lines, method="lm", color="black") +scale_color_discrete(name="Mating system", breaks=c("SI","SC"), labels=c("Self-incompatible", "Self-compatible")) +theme(legend.position = "bottom") 
 
 
 ```
