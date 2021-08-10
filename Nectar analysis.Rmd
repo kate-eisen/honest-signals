@@ -165,6 +165,11 @@ nectar_list <- nectar_work_sum %>% filter(N_plants >= 8)
 nectar_work8 <- nectar_work %>% group_by(Population) %>% filter (length(unique(Plant_id))>=8)
 ```
 
+*adding in classification of mating systems*
+
+```{r}
+nectar_work8$Mating_system <- if_else(str_detect(nectar_work8$Population,"^G|^I"), "SI", "SC")
+```
 
 
 ### Analysis: nectar vs. size, all populations
@@ -186,6 +191,37 @@ ggplot(aes(x=Corola_area_mm2, y=nectar_μl), data=nectar_work8)+geom_point(aes(c
 ```
 
 I think this works for now, but if we use all of this data, it's probably not effective to show this many populations in colors. Maybe we don't need to color the points by population here if we do a population by population analysis. Another option could be coloring the points by mating system, or region.
+
+## Analysis, nectar vs. size with mating system added
+
+```{r}
+
+nectar_work8$Mating_system<-factor(nectar_work8$Mating_system, levels=c("SI", "SC"))
+nectar_model<-lmer(nectar_μl~Corola_area_mm2*Mating_system+(1|Population/Plant_id), data=nectar_work8)
+
+par(mfrow=c(1,2))
+hist(resid(nectar_model))
+plot(predict(nectar_model),resid(nectar_model)) ; abline(h=0)
+
+anova(nectar_model)
+emmeans(nectar_model, "Mating_system")
+
+ggplot(aes(x=Corola_area_mm2, y=nectar_μl), data=nectar_work8)+geom_point(aes(color=Mating_system, shape=Mating_system), stroke=1.2)+geom_smooth(aes(color=Mating_system), method="lm")+geom_smooth(aes(color="All", shape="All"), method="lm", linetype=2, show.legend=TRUE)+theme_classic()+xlab(expression(paste("Corolla area (", mm^2 ,")"))) + ylab(expression(paste("Nectar volume (", mu,"l)")))+scale_color_discrete(name="Mating system", breaks=c("All", "SC", "SI"), labels=c("All", "Self-compatible", "Self-incompatible"))+scale_shape_manual(name="Mating system",values=c(NA, 0,1),breaks=c("All", "SC", "SI"), labels=c("All", "Self-compatible", "Self-incompatible"))
+
+#size vs. mating system
+
+size_model<-lmer(Corola_area_mm2~Mating_system+(1|Population/Plant_id), data=nectar_work8)
+
+par(mfrow=c(1,2))
+hist(resid(size_model))
+plot(predict(size_model),resid(size_model)) ; abline(h=0)
+
+anova(size_model)
+
+
+ggplot(aes(x=Mating_system, y=Corola_area_mm2), data=nectar_work8) + geom_boxplot()+theme_classic()+ylab(expression(paste("Corolla area (", mm^2 ,")"))) + xlab("Mating system")
+```
+
 
 ## Analysis: nectar vs. size, population by population
 
