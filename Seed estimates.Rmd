@@ -62,10 +62,12 @@ Okay so for a given population, we want to take the intact fruits where fruit le
 
 ```{r, warning=FALSE,message=FALSE}
 #creating a new object to contain only fruits that weren't missing seeds and that had a length greater than or equal to 5
-seeds_est <- seeds_I %>% filter(Missing_seeds==0 & fruit_length >= 5 & Seeds_counted!="NA")
+seeds_est <- seeds_I %>% filter(Missing_seeds==0 & fruit_length >= 5 & Seeds_counted!="NA") %>% 
+  mutate(Plant_ID_new = if_else(Treatment=="n", Plant_ID+400,Plant_ID)) %>% 
+  mutate(Plant_ID_final = if_else(Treatment=="e", Plant_ID+500, Plant_ID_new))
 
 #creating a function to return the summary of the model we want to apply to all the population subsets
-f <- function(df) summary(lmer(Seeds_counted ~ fruit_length +(1|Plant_ID), data = df))
+f <- function(df) summary(lmer(Seeds_counted ~ fruit_length +(1|Plant_ID_final), data = df))
 
 #subsetting the data by population and applying the function
 v <- lapply(split(seeds_est, seeds_est$Population), f)
