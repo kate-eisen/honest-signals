@@ -1,0 +1,358 @@
+---
+title: "Seed estimates and pollen limitation"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Purpose
+
+In this document, I create the regressions to estimate seed set in the fruits that were open in Italy. I then use these seed set estimates, along with the seed counts, to calculate the extent of pollen limitation in all populations.
+
+```{r, warning=FALSE,message=FALSE}
+library(tidyverse)
+library(readxl)
+library(knitr)
+library(lme4)
+library(lmerTest)
+library(knitr)
+library(emmeans)
+library(ggpubr)
+library(plotrix)
+library(magicfor)
+library(ggrepel)
+```
+
+Loading in the data and filtering out rows with missing values. Created two objects, one with the Italian populations and one with the Greek populations.
+```{r, warning=FALSE,message=FALSE}
+field <- read_csv("honest_signals/field_data.csv")
+
+seeds_E <- read_excel("honest_signals/Seed_estimate.xlsx")
+
+
+seeds_E <- seeds_E %>% filter(!is.na(Missing_seeds)) %>% filter(!is.na(Treatment))
+
+seeds_I <- seeds_E %>% filter(!str_detect(Population,"^G")) 
+seeds_G <- seeds_E %>% filter(str_detect(Population,"^G")) 
+```
+
+The number of non HP and C fruits used in each population for the regressions
+
+```{r, warning=FALSE,message=FALSE}
+kable(seeds_I %>% filter(Treatment != "c" & Treatment != "hp" & fruit_length >= 5) %>% group_by(Population, Treatment) %>% summarize(N=length(Missing_seeds)))
+
+
+```
+
+
+The percentages of fruits (from the control or hp treatments) that were missing seeds
+
+```{r, warning=FALSE,message=FALSE}
+seeds_I %>% filter(Treatment == "c" | Treatment == "hp")  %>%  group_by(Population) %>% summarize(N_missing=sum(Missing_seeds), N_total=length(Missing_seeds)) %>% mutate(Per_missing=100*(N_missing/N_total))
+```
+
+The number of fruits (broken out by treatments) that were intact
+
+```{r, warning=FALSE,message=FALSE}
+kable(seeds_I %>% filter(Treatment == "c" | Treatment == "hp" & fruit_length >= 5)  %>% group_by(Population, Treatment) %>% summarize(N_intact=length(Missing_seeds)-sum(Missing_seeds)))
+```
+
+
+
+Okay so for a given population, we want to take the intact fruits where fruit length was measured and was greater than or equal to 5, and run a regression of fruit length vs. seed set with plant ID as a random effect
+
+```{r, warning=FALSE,message=FALSE}
+#creating a new object to contain only fruits that weren't missing seeds and that had a length greater than or equal to 5
+seeds_est <- seeds_I %>% filter(Missing_seeds==0 & fruit_length >= 5 & Seeds_counted!="NA") %>% 
+  mutate(Plant_ID_new = if_else(Treatment=="n", Plant_ID+400,Plant_ID)) %>% 
+  mutate(Plant_ID_final = if_else(Treatment=="e", Plant_ID+500, Plant_ID_new))
+
+#creating a function to return the summary of the model we want to apply to all the population subsets
+f <- function(df) summary(lmer(Seeds_counted ~ fruit_length +(1|Plant_ID_final), data = df))
+
+#subsetting the data by population and applying the function
+v <- lapply(split(seeds_est, seeds_est$Population), f)
+
+#creating the list of populations and the empty data frame for the results
+Pop=sort(as.factor(c(unique(seeds_est$Population),unique(seeds_est$Population))))
+
+results<-data.frame("Estimate"=numeric(), "Std. Error"=numeric(), "df"=numeric(), "t value"=numeric(), "Pr(>|t|)"=numeric())
+
+##extracting the coefficients from each model
+for (i in 1:6){
+  z<-as.data.frame(v[[i]]$coefficients)
+  results<-rbind(results,z)
+}
+
+#putting the results together with population labels
+results<-cbind(results, Pop)
+results<-results %>% tibble::rownames_to_column("Coefficient") 
+kable(results)
+
+#Using these regressions to calculate the estimated number of seeds for fruits that had missing seeds
+#My approach was to loop over the populations, subset the data by that population, and then use the regression parameters for that population to create a column that contains either the counted seed number (if no seeds were missing), or the estimated seed number if seeds were missing
+magic_for()
+for (pop in unique(Pop)) {
+  a <- seeds_I %>% filter(Population==pop) 
+  aa <- results %>% filter(Pop==pop)
+  b <- if_else(a$Missing_seeds==1, (a$fruit_length*aa[2,2])+aa[1,2], a$Seeds_counted)
+  put(b)
+}
+
+#get the result of the loop and unlist it to make it a column of the seeds_I object
+z<-magic_result()
+magic_free()
+seeds_I$estimates<-unlist(z)
+
+```
+
+
+Here we are extracting the predicted values from each model fit, to use in plotting
+
+```{r, warning=FALSE,message=FALSE}
+
+
+
+pop_list <- unique(seeds_est$Population)
+
+magic_for()
+for (pop in pop_list) {
+  a <- seeds_est %>% filter(Population==pop) 
+  b <- lmer(Seeds_counted ~ fruit_length +(1|Plant_ID), data = a)
+  c <- predict(b, type= "response")
+  put(c)
+  
+}
+#extracting the results and putting them into a column
+z<-magic_result()
+magic_free()
+seeds_est$pred<-unlist(z)
+
+#plotting the regressions for each population
+ggplot(aes(x=fruit_length),data=seeds_est)+geom_point(aes(y=Seeds_counted)) + geom_smooth(aes(y=pred), method="lm")+facet_wrap(~Population)+theme_classic()+xlab("Fruit length (mm)")+ylab("Seed number")
+
+```
+
+Now we need to take the `seeds_I$estimates` and put them into `seeds_E`, to use for our calculations for pollen limitation for all populations
+
+```{r, warning=FALSE,message=FALSE}
+seeds_G$estimates <- seeds_G$Seeds_counted
+seeds_work <- rbind(seeds_G, seeds_I)
+```
+
+Working with only the `hp` and `c` fruits, and calculating how many plants had zeros
+```{r, warning=FALSE,message=FALSE}
+seeds_work <- seeds_work %>% filter(Treatment == "hp" | Treatment == "c")
+
+#looking at number of plants that had zeros in the hp fruits, to see if we really need to drop plants 
+zees<-seeds_work %>% group_by(Population, Plant_ID) %>% filter(Treatment== "hp") %>% summarize(zeros=sum(estimates==0), nonzeroes=sum(estimates!=0))
+
+zees2<-seeds_work %>% group_by(Population, Plant_ID, Treatment) %>%  summarize(zeros=sum(estimates==0), nonzeroes=sum(estimates!=0)) %>% pivot_wider(names_from=Treatment, values_from=c(zeros, nonzeroes))
+
+
+#for now, we will only analyze plants where there were fewer than 2 zero-seed hand-pollinated fruits, following Sotiria's criteria
+#this is a list of the plants had less than 2 zeros in the hp fruits
+keep_list <- zees2 %>% filter(zeros_hp <2) %>% mutate(ID=paste(Population, Plant_ID))
+
+#making an object with only those plants
+seeds_work2<- seeds_work %>% mutate(ID=paste(Population, Plant_ID)) %>% filter(ID %in% keep_list$ID) %>% mutate(Treatment=factor(Treatment, levels=c("hp", "c")))
+
+#this tells us sample sizes
+seeds_work2 %>% group_by(Population) %>% summarize(N=length(unique(Plant_ID)))
+
+seeds_work4<- seeds_work2 %>% mutate(estimates=if_else(estimates<0, 0, estimates)) %>% mutate(estimates=if_else(estimates==333, 33, estimates)) %>% mutate(estimates=if_else(is.na(estimates), Seeds_counted, estimates)) %>% drop_na(estimates)
+
+oppsel <- seeds_work4 %>% group_by(Population, Treatment) %>% mutate(relfit = estimates/mean(estimates)) %>% summarize(eye = var(relfit))
+
+oppsel %>% group_by(Treatment) %>% summarize(med = median(eye), mini = min(eye), maxi=max(eye))
+
+ggplot(aes(x=Population, y=eye, color=Treatment), data=oppsel)+geom_point()+theme_classic(base_size=16)
+
+oppsel_checks <- seeds_work4 %>% group_by(Population,Treatment) %>% summarize(mean=mean(estimates)) 
+```
+
+
+Run an lmer for each population
+
+```{r, warning=FALSE, message=FALSE}
+#creating a function that extracts the emmeans for models
+f <- function(df) as.data.frame(emmeans(lmer(estimates ~ Treatment +(1|Plant_ID), data = df), "Treatment"))
+#applying this function to the dataset subset by population
+v <- lapply(split(seeds_work4, seeds_work4$Population), f)
+
+#creating a function that extracts the pairwise comparisons of emmeans for models
+f2 <- function(df) as.data.frame(pairs(emmeans(lmer(estimates ~ Treatment +(1|Plant_ID), data = df), "Treatment")))
+#applying this function to the dataset subset by population
+v3 <- lapply(split(seeds_work4, seeds_work4$Population), f2)
+
+#making the contrasts object more usable, adding significance column
+v4 <-do.call(rbind.data.frame, v3)
+v4$Pop<-rownames(v4)
+rownames(v4)<-c()
+v4$sig<-ifelse(v4$p.value<0.05, "*", "")
+
+#making the emmeans object more usable
+v2<-do.call(rbind.data.frame, v)
+Pop=sort(as.factor(c(unique(seeds_work2$Population),unique(seeds_work2$Population))))
+v2<-data.frame(v2, Pop, row.names = c())
+
+#printing these tables
+kable(v2)
+kable(v4)
+
+#plotting the pollen limitation results
+ggplot(aes(x=Treatment, y=emmean), data=v2) + facet_wrap(~Pop) +geom_point()+geom_errorbar(aes(ymin=emmean-SE, ymax=emmean+SE), width=0.2) +ylab("Seed set") + theme_classic()+geom_text(aes(x=1.5, y=20, label=sig),data=v4, size=6 )
+
+```
+
+```{r}
+#trying to work with size
+
+#first on the population level
+
+PL <- v2 %>%  pivot_wider(names_from=Treatment, values_from = emmean, values_fill = 0) %>% group_by(Pop) %>% mutate(C=sum(c), HP=sum(hp), PL=(HP-C)/HP)
+
+size_field <- field %>% filter(FlowerSize !="NA") %>%  group_by(Population) %>% summarize(size = mean(FlowerSize))
+
+PL_pop <- inner_join(size_field, PL, by=c("Population"="Pop")) %>% distinct(Population, .keep_all=TRUE)
+
+ggplot(aes(x=size, y=log(PL+0.0001), label=Population), data=PL_pop)+geom_smooth(method="lm", se=FALSE)+geom_label_repel(min.segment.length = Inf)+geom_point()
+
+model <- lm(PL~size, data=PL_pop)
+
+cor(PL_pop$size, PL_pop$PL)
+
+#now on the plant level
+
+seeds_work4<- seeds_work2 %>% mutate(estimates=if_else(estimates<0, 0, estimates)) %>% mutate(estimates=if_else(estimates==333, 33, estimates)) %>% mutate(estimates=if_else(is.na(estimates), Seeds_counted, estimates)) %>% drop_na(estimates)
+
+plant_PL2 <- seeds_work4 %>% group_by(ID, Treatment) %>% summarize(M = mean(estimates)) %>% pivot_wider(names_from = Treatment, values_from = M)%>% mutate(PL=(hp-c)/hp) %>% left_join(., field, by="ID") %>% filter(PL > -15) %>% filter(FlowerSize >1)
+
+
+library(ggpubr)
+
+##this plot##
+#with colors
+
+ggplot(aes(x=FlowerSize, y=PL), data=plant_PL2)+geom_point()+geom_smooth(method="lm", se=FALSE)+facet_wrap(~Population)+scale_y_continuous(limits=c(-15, 2))+theme_classic(base_size = 16)+theme(legend.position = "none")
+
+
+
+plant_PL2$Population <- as.factor(plant_PL2$Population)
+levels(plant_PL2$Population) <- c( "G3",  "G6" , "G7" , "G8",  "G9" , "I10" ,"I15", "I16", "I17", "I4" , "I7","G1"  )
+model <- lm(FlowerSize~PL+Population,data=plant_PL2)
+
+model<-lm(PL~FlowerSize*Population, data=plant_PL2)
+hist(resid(model))
+plot(predict(model),resid(model)) ; abline(h=0)
+
+
+par(mfrow=c(1,2))
+hist(resid(model))
+plot(predict(model),resid(model)) ; abline(h=0)
+
+linesPL <- coef(model)$Population
+linesPL$Population <- rownames(linesPL)
+
+ggplot(aes(x=FlowerSize, y=PL, color=Population, group=Population), data=plant_PL2)+geom_point()+facet_wrap(~Population)
+
+plant_PL2 %>%
+  group_by(Population) %>%
+  summarize(COR=cor(PL,FlowerSize))
+
+```
+
+Figure 2
+```{r}
+#panel A:
+
+
+a <- ggplot(aes(x=Treatment, y=emmean), data=v2) + facet_wrap(~Pop) +geom_point()+geom_errorbar(aes(ymin=emmean-SE, ymax=emmean+SE), width=0.2) +ylab("Seed set") + theme_classic(base_size = 16)+geom_text(aes(x=1.5, y=20, label=sig),data=v4, size=6 ) 
+
+PL_pop$sig <- v4$sig
+#panel B:
+b <- ggplot(aes(x=size, y=PL, label=Population), data=PL_pop)+geom_smooth(method="lm", se=FALSE)+geom_point(aes(shape=sig), size=6)+geom_label_repel(min.segment.length = Inf)+theme_classic(base_size = 16)+scale_shape_manual(values=c(1,8))+theme(legend.position = "none")+xlab(expression(paste("Corolla area, (", mm^2 ,")")))+ylab("Pollen limitation")
+
++geom_errorbarh(aes(xmin=size-SE, xmax=size+SE), data=PL_pop)
+
+ggarrange(a, b)
+
+```
+
+
+
+Working with selection.
+First, estimating selection in the HP and C groups separately.
+
+```{r}
+f <- function(df) summary(lm((hp/mean(hp)) ~ scale(FlowerSize), data = df))
+#applying this function to the dataset subset by population
+v <- lapply(split(plant_PL2, plant_PL2$Population), f)
+
+Pop=sort(as.factor(c(unique(plant_PL2$Population),unique(plant_PL2$Population))))
+
+results<-data.frame("Estimate"=numeric(), "Std. Error"=numeric(), "df"=numeric(), "t value"=numeric(), "Pr(>|t|)"=numeric())
+
+##extracting the coefficients from each model
+for (i in 1:12){
+  z<-as.data.frame(v[[i]]$coefficients)
+  results<-rbind(results,z)
+}
+
+#putting the results together with population labels
+results<-cbind(results, Pop)
+results<-results %>% tibble::rownames_to_column("Coefficient") 
+
+#the only population with selection in the hp fruits is It15.
+```
+
+C fruits.
+
+```{r}
+f <- function(df) summary(lm((c/mean(c)) ~ scale(FlowerSize), data = df))
+#applying this function to the dataset subset by population
+v <- lapply(split(plant_PL2, plant_PL2$Population), f)
+
+Pop=sort(as.factor(c(unique(plant_PL2$Population),unique(plant_PL2$Population))))
+
+results<-data.frame("Estimate"=numeric(), "Std. Error"=numeric(), "df"=numeric(), "t value"=numeric(), "Pr(>|t|)"=numeric())
+
+##extracting the coefficients from each model
+for (i in 1:12){
+  z<-as.data.frame(v[[i]]$coefficients)
+  results<-rbind(results,z)
+}
+
+#putting the results together with population labels
+results<-cbind(results, Pop)
+results<-results %>% tibble::rownames_to_column("Coefficient") 
+```
+
+Comparing the treatments
+```{r}
+
+plants_PL_long <- plant_PL2 %>% pivot_longer(cols=c("hp", "c"), names_to="Treatment")
+
+all_pops_model <- lmer((value/mean(value))~scale(FlowerSize)*Treatment*Population+(1|Plant_ID), data = plants_PL_long)
+
+f <- function(df) anova(lmer((value/mean(value)) ~ scale(FlowerSize)*Treatment+(1|Plant_ID), data = df))
+#applying this function to the dataset subset by population
+v <- lapply(split(plants_PL_long, plants_PL_long$Population), f)
+
+Pop=sort(as.factor(c(unique(plants_PL_long$Population),unique(plants_PL_long$Population))))
+
+results<-data.frame("Estimate"=numeric(), "Std. Error"=numeric(), "df"=numeric(), "t value"=numeric(), "Pr(>|t|)"=numeric())
+
+##extracting the coefficients from each model
+for (i in 1:12){
+  z<-as.data.frame(v[[i]]$coefficients)
+  results<-rbind(results,z)
+}
+
+#putting the results together with population labels
+results<-cbind(results, Pop)
+results<-results %>% tibble::rownames_to_column("Coefficient") 
+```
+

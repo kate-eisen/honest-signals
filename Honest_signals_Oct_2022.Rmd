@@ -1,5 +1,5 @@
 ---
-title: "Analyses and Figures for Honest Signals Manuscript"
+title: "Analyses and Figures for Honest Signals Manuscript: Greenhouse data"
 output: github_document
 ---
 
