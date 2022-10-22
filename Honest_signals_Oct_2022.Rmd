@@ -1,0 +1,241 @@
+---
+title: "Analyses and Figures for Honest Signals Manuscript"
+output: github_document
+---
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(lme4)
+library(nlme)
+library(lmerTest)
+library(knitr)
+library(lmerTest)
+library(emmeans)
+library(ggpubr)
+library(plotrix)
+library(varTestnlme)
+library(reshape2)
+library(ggrepel)
+```
+
+
+*Loading and combining datasets*
+
+```{r}
+#total scent dataset
+scent <- read_csv("honest_signals/scents_honest.csv") %>% mutate(ID=as.character(ID)) 
+
+#compound scent dataset
+scent_comps <- read_csv("compounds_honest.csv") %>% mutate(ID=as.character(ID))
+
+#converting compound scent dataset (with peak areas) into emission rates
+funfun <- function(col, tol.area, N.fl){
+  (col/tol.area)*23.6*55*(1/3)*(1/N.fl)
+}
+
+scent_comps_calc <- scent_comps %>% mutate_at(c(4:12), ~replace(., is.na(.), 0)) %>% left_join(., scent, by="ID")
+scent_comps_calc <-scent_comps_calc  %>% mutate_at(c(4:12), list(~funfun(., Toluene_adj.y,NFlowers.x)))
+
+#nectar on the plant level
+nectar_plant <- read_xlsx("honest_signals/nectar_for_scent_HT_short.xlsx") %>% mutate(Plant_id=as.factor(as.character(Plant_id)))
+
+#nectar on the flower level
+nectar_flower <- read_xlsx("honest_signals/nectar protocol.xlsx") %>% mutate(Population=as.factor(Population), Plant_ID=as.factor(as.character(Plant_ID)), Flower_id=as.factor(as.character(Flower_id)), plant_id=as.factor(as.character(plant_id)))
+
+
+nectar_size_plant <- nectar_flower %>% filter(Corola_area_mm2!="NA") %>%   group_by(Population, plant_id) %>% summarize(size=mean(Corola_area_mm2), nect=mean(nectar_μl))
+
+nectar_size_plant <- left_join(nectar_size_plant, nectar_plant,   by=c("Population", "plant_id"="Plant_id")) %>% group_by(Population) %>%  filter(length(unique(plant_id))>=8) %>% select(-Mean_nectar, -Notes, -`...7`)
+
+nectar_size_scent <- left_join(nectar_size_plant, scent, by=c("Scent_ID"="ID")) %>%  filter(Scent_ID!="NA") %>% drop_na() %>% mutate(log_size = log(size), log_nect=log(nect+0.0001), log_scent=log(total_tol))
+
+
+scent_nectar <- left_join(nectar_plant, scent, by=c("Scent_ID" = "ID"))
+
+comps_nectar <- left_join(nectar_plant, scent_comps_calc, by=c("Scent_ID" = "ID"))
+
+```
+
+*Objects that have been filtered and modified*
+```{r}
+
+nectar_flower_work <- nectar_flower %>% filter(!is.na(Population)) %>%  filter(!is.na(nectar_μl)) %>% filter(!is.na(Corola_area_mm2)) %>% filter(Corola_area_mm2>0) %>% filter(Population %in% nectar_flower_pop$Population)
+
+nectar_flower_work$Mating_system <- if_else(str_detect(nectar_flower_work$Population,"^G|^I"), "SI", "SC")
+nectar_flower_work$Mating_system<-factor(nectar_flower_work$Mating_system, levels=c("SI", "SC"))
+nectar_flower_work$Population <- droplevels(nectar_flower_work$Population)
+
+scent_nectar_work <- scent_nectar %>% drop_na(total_tol) %>%  group_by(Population) %>% filter(length(unique(Plant_id))>=8)
+
+scent_nectar_work$Population <- recode(scent_nectar_work$Population, `Fr3/IT11`="Fr3", `Fr4/IT12`="Fr4")
+scent_nectar_work$Mating_system <- if_else(str_detect(scent_nectar_work$Population,"^G|^I"), "SI", "SC")
+scent_nectar_work$Mating_system<-factor(scent_nectar_work$Mating_system, levels=c("SI", "SC"))
+
+comps_nectar_work <- comps_nectar  %>% drop_na(Toluene_adj.x)  %>% group_by(Population) %>% filter(length(unique(Plant_id))>=8)
+comps_nectar_work$Population <- recode(comps_nectar_work$Population, `Fr3/IT11`="Fr3", `Fr4/IT12`="Fr4")
+comps_nectar_work$Mating_system <- if_else(str_detect(comps_nectar_work$Population,"^G|^I"), "SI", "SC")
+comps_nectar_work$Mating_system<-factor(comps_nectar_work$Mating_system, levels=c("SI", "SC"))
+```
+
+
+Overall correlations of log-transformed variables:
+```{r}
+cor_m <- nectar_size_scent[,c(13,14,15)]
+cor(cor_m)
+```
+
+Trait means (Table S4)
+```{r}
+
+nectar_means <- nectar_flower_work %>% group_by(Population) %>%  summarize_at(c("nectar_μl", "Corola_area_mm2"), list(mean, std.error))
+
+nectar_mating <- lmer(Corola_area_mm2~Mating_system+(1|Population/Plant_ID/Flower_id), data=nectar_flower_work)
+
+size_mating <- lmer(nectar_μl~Mating_system+(1|Population/Plant_ID/Flower_id), data=nectar_flower_work)
+
+scent_means <- scent_nectar_work %>%   group_by(Population) %>%  summarize_at(c("total_tol", "Mean_nectar"), list(mean, std.error))
+
+
+##calculate means of all scent compounds
+
+comp_means <- comps_nectar_work %>% mutate_at(c(10:18), ~replace(., is.na(.), 0))%>% group_by(Population) %>% summarize_at(c(9:17), list(mean, std.error))
+
+scent_counts <- scent_nectar_work %>%   group_by(Population) %>% summarize(N = length(Scent_ID))
+
+scent_mating <- lmer(total_tol~Mating_system+(1|Population), data=scent_nectar_work)
+
+
+
+```
+
+
+
+
+
+Variance partitioning goes here:
+```{r}
+#Variance partitioning
+scent_test <- lm(total_tol~Population, data=scent_nectar_work)
+scent_null <- lm(total_tol~1,data=scent_nectar_work )
+
+nectar_test <- lmer(nectar_μl~Population+(1|Plant_ID/Flower_id), data=nectar_flower_work)
+nectar_null <- lmer(nectar_μl~1+(1|Plant_ID/Flower_id), data=nectar_flower_work)
+
+size_test <- lmer(Corola_area_mm2~Population+(1|Plant_ID/Flower_id), data=nectar_flower_work)
+size_null <- lmer(Corola_area_mm2~1+(1|Plant_ID/Flower_id), data=nectar_flower_work)
+```
+
+Nectar vs. size
+```{r}
+
+cor(log(nectar_flower_work$nectar_μl+0.0001), log(nectar_flower_work$Corola_area_mm2))
+
+nectar_size_model_re <- lmer(log(nectar_μl+0.0001)~log(Corola_area_mm2)+(log(Corola_area_mm2)|Population/Plant_ID), data=nectar_flower_work)
+
+nectar_size_model_re <- lmer(log(nectar_μl+0.0001)~log(Corola_area_mm2)*Mating_system+(log(Corola_area_mm2)|Population/Plant_ID), data=nectar_flower_work)
+trends<-emtrends(nectar_size_model_re, "Mating_system", var="log(Corola_area_mm2)")
+
+nectar_size_model_re <- lmer(log(nectar_μl+0.0001)~log(Corola_area_mm2)*Population+(1|Population/Plant_ID), data=nectar_flower_work)
+trends<-as.data.frame(emtrends(nectar_size_model_re, "Population", var="log(Corola_area_mm2)"))
+peas <- test(emtrends(nectar_size_model_re, "Population", var="log(Corola_area_mm2)")) %>% filter(p.value < 0.059)
+
+plist <- test(emtrends(nectar_size_model_re, "Population", var="log(Corola_area_mm2)")) %>% mutate(Sig = if_else(p.value < 0.059, "A", "No"))
+
+lines <- nectar_flower_work
+lines$Population <- droplevels(lines$Population)
+levels(lines$Population) <- levels(size_list$Population)
+lines <- lines %>% filter(Population %in% peas$Population) 
+
+nectar_flower_work$Mating_system <- if_else(str_detect(nectar_flower_work$Population,"^G|^I"), "SI", "SC")
+
+p <- ggplot(aes(x=log(Corola_area_mm2), y=log(nectar_μl+0.0001), color=Mating_system, group=Population), data=nectar_flower_work)+geom_point(aes(x=log(Corola_area_mm2), y=log(nectar_μl+0.0001), color=Mating_system, group=Population), data=nectar_flower_work)+ facet_wrap(~Population, dir="v")+geom_text(
+  data    = nectar_flower_work,
+  mapping = aes(x = 3, y = Inf, label = Population),
+  hjust="left",
+  vjust   = 1)+
+    theme_classic(base_size=16)+
+  annotate("segment", x=-Inf, xend=Inf, y=-Inf, yend=-Inf, size=1)+
+  annotate("segment", x=-Inf, xend=-Inf, y=-Inf, yend=Inf, size=1)+
+xlab(expression(paste("Corolla area, log(", mm^2 ,")"))) + ylab(expression(paste("Nectar volume, log(", mu,"l)")))+ scale_x_continuous(breaks=c(3,4,5))+theme(legend.position = "none") +geom_smooth(data=lines, method="lm",color="black", se=F)+ 
+theme(strip.background = element_blank(),
+  strip.text.x = element_blank()
+)+scale_color_viridis(discrete=TRUE,option="magma",begin=.6, end=0.8)
+
+
+nectar_flower_work %>% group_by(Population) %>% summarize(COR=cor(log(nectar_μl+0.0001),log(Corola_area_mm2)))
+
+
+
+
+```
+
+
+
+Nectar vs. scent
+```{r}
+scent_nectar_model<-lmer(log(Mean_nectar+0.0001)~log(total_tol)+(log(total_tol)|Population), data=scent_nectar_work)
+
+scent_size_nectar_model <- lmer(log_nect~log_scent+log_size+(log_scent|Population), data=nectar_size_scent)
+
+cor(log(scent_nectar_work$Mean_nectar+0.0001), log(scent_nectar_work$total_tol))
+
+
+scent_nectar_model<-lmer(log(Mean_nectar+0.0001)~log(total_tol)*Mating_system+(log(total_tol)|Population), data=scent_nectar_work)
+
+scent_nectar_model<-lm(log(Mean_nectar+0.0001)~log(total_tol)*Population, data=scent_nectar_work)
+trends<-emtrends(scent_nectar_model, "Population", var="log(total_tol)")
+peas <- test(emtrends(scent_nectar_model, "Population", var="log(total_tol)")) %>% filter(p.value < 0.059)
+
+pp <- test(emtrends(scent_nectar_model, "Population", var="log(total_tol)")) %>% mutate(Sig=if_else(p.value < 0.059, "A", "No"))
+lines <- scent_nectar_work %>% filter(Population %in% peas$Population)
+
+lines <- scent_nectar_work
+lines$Population <- droplevels(lines$Population)
+levels(lines$Population) <- levels(scent_list$Population)
+lines <- lines %>% filter(Population %in% peas$Population) 
+
+scent_nectar_work$Population <- as.factor(scent_nectar_work$Population)
+
+p <- ggplot(aes(x=log(total_tol), y=log(Mean_nectar+0.0001), color=Population, shape=Mating_system, group=Population), data=scent_nectar_work)+geom_point()+ facet_wrap(~Population)+geom_text(
+  data    = scent_nectar_work,
+  mapping = aes(x = -Inf, y = Inf, label = Population),
+  hjust   = -0.5,
+  vjust   = 1
+)+
+    theme_classic(base_size=16)+
+  annotate("segment", x=-Inf, xend=Inf, y=-Inf, yend=-Inf, size=1)+
+  annotate("segment", x=-Inf, xend=-Inf, y=-Inf, yend=Inf, size=1)+
+xlab(expression(paste("Total scent emission (ng ", h^-1, flower^-1, ")")))  + ylab(expression(paste("Nectar volume, log(", mu,"l)")))+ scale_x_continuous(breaks=c(3,4,5))+theme(legend.position = "none") +geom_smooth(data=lines, method="lm",color="black", se=F)+ 
+theme(
+  strip.background = element_blank(),
+  strip.text.x = element_blank()
+)+scale_color_manual(values=cols_scent$colour)
+
+
+levels(scent_nectar_work$Population) <- levels(scent_list$Population) 
+levels(lines$Population)<- levels(scent_list$Population) #messed up, remake lines object
+
+
+
+p_MS <- ggplot(aes(x=log(total_tol), y=log(Mean_nectar+0.0001), color=Mating_system, group=Population), data=scent_nectar_work)+geom_point()+ facet_wrap(~Population, dir="v")+geom_text(
+  data    = scent_nectar_work,
+  mapping = aes(x = -3, y = Inf, label = Population),
+  hjust   = "left",
+  vjust   = 1
+)+
+    theme_classic(base_size=16)+
+  annotate("segment", x=-Inf, xend=Inf, y=-Inf, yend=-Inf, size=1)+
+  annotate("segment", x=-Inf, xend=-Inf, y=-Inf, yend=Inf, size=1)+
+xlab(expression(paste("Total scent emission (ng ", h^-1, flower^-1, ")")))  + ylab(expression(paste("Nectar volume, log(", mu,"l)")))+theme(legend.position = "none") +geom_smooth(data=lines, method="lm",color="black", se=F)+ 
+theme(
+  strip.background = element_blank(),
+  strip.text.x = element_blank()
+)+scale_color_viridis(discrete=TRUE,option="magma",begin=.6, end=0.8)
+
++ scale_x_continuous(breaks=c(3,4,5))
+
+View(scent_nectar_work %>% group_by(Population) %>% summarize(COR=cor(log(Mean_nectar+0.0001),log(total_tol))))
+
+
+```
