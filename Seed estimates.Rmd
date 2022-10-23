@@ -13,7 +13,6 @@ In this document, I create the regressions to estimate seed set in the fruits th
 
 ```{r, warning=FALSE,message=FALSE}
 library(tidyverse)
-library(readxl)
 library(knitr)
 library(lme4)
 library(lmerTest)
@@ -27,9 +26,9 @@ library(ggrepel)
 
 Loading in the data and filtering out rows with missing values. Created two objects, one with the Italian populations and one with the Greek populations.
 ```{r, warning=FALSE,message=FALSE}
-field <- read_csv("honest_signals/field_data.csv")
+field <- read_csv("field_data.csv")
 
-seeds_E <- read_excel("honest_signals/Seed_estimate.xlsx")
+seeds_E <- read_csv("Seed_estimate.csv")
 
 
 seeds_E <- seeds_E %>% filter(!is.na(Missing_seeds)) %>% filter(!is.na(Treatment))

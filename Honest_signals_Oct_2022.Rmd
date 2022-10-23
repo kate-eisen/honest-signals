@@ -5,7 +5,6 @@ output: github_document
 
 ```{r}
 library(tidyverse)
-library(readxl)
 library(lme4)
 library(nlme)
 library(lmerTest)
@@ -24,7 +23,7 @@ library(ggrepel)
 
 ```{r}
 #total scent dataset
-scent <- read_csv("honest_signals/scents_honest.csv") %>% mutate(ID=as.character(ID)) 
+scent <- read_csv("scents_honest.csv") %>% mutate(ID=as.character(ID)) 
 
 #compound scent dataset
 scent_comps <- read_csv("compounds_honest.csv") %>% mutate(ID=as.character(ID))
@@ -38,10 +37,10 @@ scent_comps_calc <- scent_comps %>% mutate_at(c(4:12), ~replace(., is.na(.), 0))
 scent_comps_calc <-scent_comps_calc  %>% mutate_at(c(4:12), list(~funfun(., Toluene_adj.y,NFlowers.x)))
 
 #nectar on the plant level
-nectar_plant <- read_xlsx("honest_signals/nectar_for_scent_HT_short.xlsx") %>% mutate(Plant_id=as.factor(as.character(Plant_id)))
+nectar_plant <- read_csv("nectar_for_scent_HT_short.csv") %>% mutate(Plant_id=as.factor(as.character(Plant_id)))
 
 #nectar on the flower level
-nectar_flower <- read_xlsx("honest_signals/nectar protocol.xlsx") %>% mutate(Population=as.factor(Population), Plant_ID=as.factor(as.character(Plant_ID)), Flower_id=as.factor(as.character(Flower_id)), plant_id=as.factor(as.character(plant_id)))
+nectar_flower <- read_csv("nectar protocol.csv") %>% mutate(Population=as.factor(Population), Plant_ID=as.factor(as.character(Plant_ID)), Flower_id=as.factor(as.character(Flower_id)), plant_id=as.factor(as.character(plant_id)))
 
 
 nectar_size_plant <- nectar_flower %>% filter(Corola_area_mm2!="NA") %>%   group_by(Population, plant_id) %>% summarize(size=mean(Corola_area_mm2), nect=mean(nectar_μl))
