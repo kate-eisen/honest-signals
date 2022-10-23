@@ -1,0 +1,12 @@
+﻿Column.letter,Column.Name,Description,Type,Levels.or.units,Notes
+A,Population,Population ID,Factor,,
+B,Plant_ID,"Plant identifier, starting at 1 in each population",Numeric ID,,
+C,plant_id,"Plant identifier, unique to each plant in the study",Numeric ID,,
+D,flower_id,"Flower identifier, unique to each flower in the study",Numeric ID,,
+E,Flower_id,"Flower identifier, unique within each population",Numeric ID,,
+F,Petal_width_mm,Width of petals measured from photos,Numeric,mm,
+G,Petal_length_mm,Length of petals measured from photos,Numeric,mm,
+H,nectar_μl,Nectar volume,Numeric,μl,
+I,Date,Date of measurement,Date,Month-Day-Year format,
+J,Comments,Notes,,,
+K,Corola_area_mm2,Corolla area,Numeric,mm2,Formula is 3.141519 x petal length x petal width

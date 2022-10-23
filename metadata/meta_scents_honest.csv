@@ -1,0 +1,8 @@
+﻿Column.letter,Column.Name,Description,Type,Levels.or.units,Notes
+A,ID,Scent ID,Numeric identifier,,
+B,total,Peak area of all compounds in the sample,Numeric,,
+C,Top,Most abundant compound in the sample,Factor,,
+D,file,Date sample was run,Date,YearMonthDay format,
+E,Toluene_adj,Peak area of toluene,Numeric,,
+F,NFlowers,Number of flowers sampled,Numeric,,
+G,total_tol,Total scent emission rate in toluene equivalents,Numeric,,Calculated as: (total/Toluene_adj)*23.6*55*(1/3)*(1/Nflowers). 23.6 is the amount of toluene in each sample and 55 is the volume of each sample. Samples were collected for 3 hours.

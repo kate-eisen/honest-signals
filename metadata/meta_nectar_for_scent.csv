@@ -1,0 +1,7 @@
+﻿Column.letter,Column.Name,Description,Type,Levels.or.units,Notes
+A,Plant_id,Plant identifier,Numeric ID,,
+B,Full_ID,Full plant identifier including population information,Text ID,,
+C,Scent_ID,Scent run identifier,Numeric ID,,
+D,Population,Population,Factor,,
+E,Mean_nectar,Mean nectar volume for the plant,Numeric,uL,
+F,Notes,Notes,Text,,

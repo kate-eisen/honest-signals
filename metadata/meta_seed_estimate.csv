@@ -1,0 +1,10 @@
+﻿Column.letter,Column.Name,Description,Type,Levels.or.units,Notes
+A,Population,Population,Factor,,
+B,Plant_ID,plant's number as named in the field. Not unique across populations.,Numeric ID,,
+C,Fruit_nr,Fruit identifier for each plant,Numeric ID,1: oldest fruit collected. 15: youngest fruit collected.,
+D,Treatment,Pollination Treatment applied,Factor,"control (c), hand-pollinated (hp), neighboring control (n) or extra (e).",
+E,Missing_seeds,Whether or not the fruit had seeds missing when collected,Binary,0: no missing seeds; 1: missing seeds,
+F,Seeds_counted,Number of seeds in the fruit,Numeric,Count,
+G,fruit_length,Length of the fruit,Numeric,mm,"measured with a ruler. Only the thick part of the fruit, (not the peduncle)"
+H,Branch ,Whether the fruit was on the main branch or a side stem,Binary,0 or 1. 0:fruit on the main flowering stem of the plant. 1: on a side stem,
+I,Comments,Notes,Text,,
