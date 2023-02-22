@@ -1,5 +1,5 @@
 ---
-title: "Plotting scripts"
+title: "Script to make Figures 1 and 2"
 output: github_document
 ---
 
@@ -86,7 +86,7 @@ nectar_flower_z <- nectar_flower_work %>% filter(nectar_μl==0) %>%  group_by(Po
                                                                                                                  
 ```
 
-Dataset manipulation to build plot A:
+Dataset manipulation to build Figure 1 plot A:
 ```{r}
 nectar_flower_work$y1 = ((nectar_flower_work$nectar_μl>0)*1)
 
@@ -98,12 +98,12 @@ nectar_flower_plotting_zeros <- nectar_flower_work %>% group_by(Population) %>% 
 
 ```
 
-Making Plot A (logistic regression)
+Making Figure 1 Plot A (logistic regression)
 ```{r}
 panelA <-ggplot(aes(x=size_mean, y=nect_mean,label=Population, color=Mating_system), data=nectar_flower_plotting_zeros)+geom_errorbar(aes(x=size_mean, ymin=nect_mean-nect_se, ymax=nect_mean+nect_se), data=nectar_flower_plotting_zeros, size=1.25, show.legend=F)+geom_errorbarh(aes(y=nect_mean, xmin=size_mean-size_se, xmax=size_mean+size_se), data=nectar_flower_plotting_zeros, size=1.25, show.legend=F)+ geom_smooth(aes(x=log(Corola_area_mm2), y=y1), data=nectar_flower_work, method="glm", method.args = list(family = "binomial"), se=FALSE, color="black", linetype=2)+geom_point(aes(x=log(Corola_area_mm2), y=y1, color=Mating_system), data=nectar_flower_work, show.legend=F)+geom_label_repel(aes(x=size_mean, y=nect_mean,label=Population, color=Mating_system), data=nectar_flower_plotting_zeros, max.overlaps=100,min.segment.length = 0, show.legend=F)+theme_classic(base_size = 16)+xlab(expression(paste("Corolla area, log(", mm^2 ,")")))+ylab("Presence of nectar")+scale_color_viridis(discrete=TRUE,option="magma",begin=.6, end=0.8)
 ```
 
-Dataset manipulation to build plot B:
+Dataset manipulation to build Figure 1 plot B:
 ```{r}
 #in order to get Sig in nectar_flower_plotting, need to run tests on the model
 
@@ -140,7 +140,7 @@ nectar_flower_noz <- nectar_flower_work %>% filter(nectar_μl > 0)
 ```
 
 
-Making plot B (population level regression of non-zero nectar values)
+Making Figure 1 plot B (population level regression of non-zero nectar values)
 
 ```{r}
 panelB <- ggplot(aes(x=size_mean, y=nect_mean,label=Population, color=Mating_system), data=nectar_flower_plotting)+geom_errorbar(aes(x=size_mean, ymin=nect_mean-nect_se, ymax=nect_mean+nect_se, alpha=Sig.y), data=nectar_flower_plotting, size=1.25, show.legend=F)+geom_errorbarh(aes(y=nect_mean, xmin=size_mean-size_se, xmax=size_mean+size_se, alpha=Sig.y), data=nectar_flower_plotting, size=1.25, show.legend=F)+geom_smooth(aes(x=log(Corola_area_mm2), y=log(nectar_μl)), data=nectar_flower_noz, method="lm", se=FALSE, color="black", linetype=2)+geom_label_repel(aes(x=size_mean, y=nect_mean,label=Population, color=Mating_system), data=nectar_flower_plotting, max.overlaps=100,min.segment.length = 0, show.legend=F)+theme_classic(base_size = 16)+xlab(expression(paste("Corolla area, log(", mm^2 ,")"))) + ylab(expression(paste("Nectar volume, log(", mu,"l)")))+scale_alpha_manual(values=c(1,0.5), labels=c("1", "0.5"))+scale_color_viridis(discrete=TRUE,option="magma",begin=.6, end=0.8)
@@ -163,7 +163,7 @@ test_join <- left_join(nectar_flower_work, peas, by="Population") %>% filter(Typ
 ```
 
 
-Making plot C and let's see how it looks this way:
+Making Figure 1 Plot C
 
 ```{r}
 panelC <- ggplot(aes(x=log(Corola_area_mm2), y=pred, color=Mating_system, group=Population), data=nectar_flower_work)+geom_point(aes(x=log(Corola_area_mm2), y=pred, color=Mating_system, group=Population), data=nectar_flower_work)+ facet_wrap(~Population, dir="v")+geom_text(
@@ -185,5 +185,54 @@ ggdraw() +
   draw_plot(panelA, x=0, y=0.6, width=0.5, height=0.4)+
   draw_plot(panelB, x=0.5, y=0.6, width=0.5, height=0.4) +
   draw_plot(panelC, x=0, y=0, width=1, height=0.6)
+```
+
+Figure 2: Population means of total floral scent vs. mean nectar volume per plant:
+
+Data manipulation
+```{r}
+scent_nectar_model<-lm(log(Mean_nectar+0.0001)~log(total_tol)*Population, data=scent_nectar_work)
+
+pp <- test(emtrends(scent_nectar_model, "Population", var="log(total_tol)")) %>% mutate(Sig=if_else(p.value < 0.059, "A", "No"))
+
+scent_nectar_plotting <- scent_nectar_work %>% group_by(Population) %>% mutate(nect_mean=mean(log(Mean_nectar+0.0001)),  scent_mean=mean(log(total_tol)), scent_se=std.error(log(total_tol)), nect_se=std.error(log(Mean_nectar+0.0001))) %>% summarize(nect_mean=unique(nect_mean), scent_mean=unique(scent_mean), scent_se=unique(scent_se), nect_se=unique(nect_se)) %>% mutate(Mating_system=if_else(str_detect(Population,"^G|^I"), "SI", "SC"), Sig=pp$Sig)
+```
+
+Making the figure:
+```{r}
+ggplot(aes(x=scent_mean, y=nect_mean,label=Population, color=Mating_system), data=scent_nectar_plotting)+theme_classic(base_size=16)+xlab(expression(paste("Total scent emission log(ng ", h^-1, flower^-1, ")"))) + ylab(expression(paste("Mean nectar volume log(", mu,"l) per plant")))+geom_label_repel(aes(x=scent_mean, y=nect_mean,label=Population, color=Mating_system), data=scent_nectar_plotting,show.legend=F)+scale_color_viridis(discrete=TRUE,option="magma",begin=.6, end=0.8)+geom_errorbar(aes(x=scent_mean, ymin=nect_mean-nect_se, ymax=nect_mean+nect_se, alpha=Sig), data=scent_nectar_plotting, size=1.25, show.legend=F)+geom_errorbarh(aes(y=nect_mean, xmin=scent_mean-scent_se, xmax=scent_mean+scent_se,alpha=Sig), data=scent_nectar_plotting, size=1.25, show.legend=F) +scale_alpha_manual(values=c(1,0.5))
+```
+
+Figure S4: Population-level scent vs. nectar
+Data manipulation: order levels by scent amounts.
+```{r}
+scent_list <- scent_nectar_plotting %>% arrange(., scent_mean) 
+levels(scent_list$Population) <-scent_list$Population
+
+peas <- test(emtrends(scent_nectar_model, "Population", var="log(total_tol)")) %>% filter(p.value < 0.059)
+
+lines <- scent_nectar_work
+lines$Population <- droplevels(as.factor(lines$Population))
+levels(lines$Population) <- levels(scent_list$Population)
+lines <- lines %>% filter(Population %in% peas$Population)
+```
+
+Plotting:
+
+```{r}
+ggplot(aes(x=log(total_tol), y=log(Mean_nectar+0.0001), color=Mating_system, group=Population), data=scent_nectar_work)+geom_point()+ facet_wrap(~Population, dir="v")+geom_text(
+  data    = scent_nectar_work,
+  mapping = aes(x = -3, y = Inf, label = Population),
+  hjust   = "left",
+  vjust   = 1
+)+
+    theme_classic(base_size=16)+
+  annotate("segment", x=-Inf, xend=Inf, y=-Inf, yend=-Inf, size=1)+
+  annotate("segment", x=-Inf, xend=-Inf, y=-Inf, yend=Inf, size=1)+
+xlab(expression(paste("Total scent emission (ng ", h^-1, flower^-1, ")")))  + ylab(expression(paste("Nectar volume, log(", mu,"l)")))+theme(legend.position = "none") +geom_smooth(data=lines, method="lm",color="black", se=F)+ 
+theme(
+  strip.background = element_blank(),
+  strip.text.x = element_blank()
+)+scale_color_viridis(discrete=TRUE,option="magma",begin=.6, end=0.8)
 ```
 
