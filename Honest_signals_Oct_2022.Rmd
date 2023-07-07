@@ -21,6 +21,7 @@ library(ggrepel)
 *Loading and combining datasets*
 
 ```{r}
+
 #total scent dataset
 scent <- read_csv("scents_honest.csv") %>% mutate(ID=as.character(ID)) 
 
@@ -44,7 +45,15 @@ nectar_flower <- read_csv("nectar_protocol.csv") %>% mutate(Population=as.factor
 
 nectar_size_plant <- nectar_flower %>% filter(Corola_area_mm2!="NA") %>%   group_by(Population, plant_id) %>% summarize(size=mean(Corola_area_mm2), nect=mean(nectar_μl))
 
-nectar_size_plant <- left_join(nectar_size_plant, nectar_plant,   by=c("Population", "plant_id"="Plant_id")) %>% group_by(Population) %>%  filter(length(unique(plant_id))>=8) %>% select(-Mean_nectar, -Notes, -`X7`)
+#nectar sampling dates
+
+nectar_dates <- nectar_flower %>% filter(Corola_area_mm2!="NA") %>%   group_by(Population) %>%  filter(length(unique(plant_id))>=8)
+
+%>% group_by(Date,Population) %>% summarize(N=length(Plant_ID)) %>% group_by(Population) %>% summarize(N=length(Date))
+
+
+
+nectar_size_plant <- left_join(nectar_size_plant, nectar_plant,   by=c("Population", "plant_id"="Plant_id")) %>% group_by(Population) %>%  filter(length(unique(plant_id))>=8) %>% select(-Mean_nectar, -Notes)
 
 nectar_size_scent <- left_join(nectar_size_plant, scent, by=c("Scent_ID"="ID")) %>%  filter(Scent_ID!="NA") %>% drop_na() %>% mutate(log_size = log(size), log_nect=log(nect+0.0001), log_scent=log(total_tol))
 
@@ -52,6 +61,13 @@ nectar_size_scent <- left_join(nectar_size_plant, scent, by=c("Scent_ID"="ID")) 
 scent_nectar <- left_join(nectar_plant, scent, by=c("Scent_ID" = "ID"))
 
 comps_nectar <- left_join(nectar_plant, scent_comps_calc, by=c("Scent_ID" = "ID"))
+
+new_joint_object <- left_join(comps_nectar_work, nectar_size_plant, by="Scent_ID")
+  
+  ggplot(aes(x=`Benzyl Alcohol`, y=size), data=new_joint_object)+geom_point()+facet_wrap(~Population.x)
+  
+   ggplot(aes(x=Phenylacetaldehyde, y=size), data=new_joint_object)+geom_point()+facet_wrap(~Population.x) 
+
 
 ```
 

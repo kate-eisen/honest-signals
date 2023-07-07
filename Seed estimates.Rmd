@@ -158,6 +158,10 @@ keep_list <- zees2 %>% filter(zeros_hp <2) %>% mutate(ID=paste(Population, Plant
 #making an object with only those plants
 seeds_work2<- seeds_work %>% mutate(ID=paste(Population, Plant_ID)) %>% filter(ID %in% keep_list$ID) %>% mutate(Treatment=factor(Treatment, levels=c("hp", "c")))
 
+#sample sizes per treatment
+
+tbl <- seeds_work2 %>% group_by(Population, Plant_ID, Treatment) %>% summarize(N=length(Fruit_nr))
+
 #this tells us sample sizes
 seeds_work2 %>% group_by(Population) %>% summarize(N=length(unique(Plant_ID)))
 
